@@ -44,6 +44,12 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 .route-hint.safe{color:var(--safe)}
 .route-hint.danger{color:var(--danger)}
 .route-hint.unknown{color:var(--unknown)}
+.route-hint.close{color:var(--beacon)}
+/* A warning has to arrive faster than the thing it warns about. */
+.route-hint.danger{color:#fff;background:var(--danger);animation:warn .45s ease-in-out infinite}
+@keyframes warn{50%{transform:translateX(-50%) scale(1.06)}}
+.stat.energy strong.pulse{animation:bump .35s ease-out}
+@keyframes bump{0%{transform:scale(1);color:#fff}40%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
 
 .feed{position:absolute;top:26%;left:50%;width:88%;transform:translateX(-50%);text-align:center;font-size:1.35em;font-weight:1000;letter-spacing:-.04em;text-shadow:0 3px 12px rgba(0,0,0,.8);pointer-events:none;min-height:1.6em}
 .feed.show{animation:pop .9s ease both}

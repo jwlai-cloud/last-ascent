@@ -79,6 +79,8 @@
     ],
     baseMult: 1,
 
+    hintDwell: 3.2,          // seconds a coaching line holds before a calmer one takes the slot
+
     // Energy is the score AND the survival budget. One resource, three spends.
     /*
      * Three spends with genuinely distinct jobs — preventive, reactive, and
@@ -100,7 +102,8 @@
 
   const colors = {
     sky: 0x121a2e, tower: 0x2b3350, towerEdge: 0x3d4870, ledge: 0x55628f,
-    climber: 0xffd9a0, energy: 0x66e0c8, hazard: 0xe0556b, storm: 0x4a2440,
+    climber: 0xffd9a0, suit: 0x3f7fd6, pack: 0x2b3350,
+    energy: 0x66e0c8, hazard: 0xe0556b, storm: 0x4a2440, rubble: 0x6b5560,
     safe: 0x63c47a, danger: 0xe0556b, unknown: 0xc79bf0, beacon: 0xffe066,
   };
 
@@ -115,7 +118,8 @@
   const loadBest = () => { try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; } };
   const saveBest = n => { try { localStorage.setItem(BEST_KEY, String(n)); } catch { /* not worth a crash */ } };
 
-  let renderer, scene, camera, world, climberMesh, stormMesh, clock = 0, last = 0;
+  let renderer, scene, camera, world, climberMesh, climberLimbs, stormMesh, lightning, clock = 0, last = 0;
+  let shake = 0, lightningTimer = 1;
   let game = null;
 
   const mat = (color, roughness = .8) => new T.MeshStandardMaterial({ color, roughness, metalness: 0 });
@@ -181,18 +185,44 @@
         laneX(i) - config.laneWidth / 2, 180, -.85);
     }
 
-    /* The climber is the only sphere-topped, emissive, forward-most thing in
-     * the scene. Hazards are cones and energy is an octahedron: at a glance you
-     * read yourself by silhouette, not by colour. */
-    climberMesh = mesh(new T.CapsuleGeometry(.32, .46, 4, 12), mat(colors.climber, .45), world, 0, 0, .9);
-    climberMesh.material.emissive = new T.Color(colors.climber);
-    climberMesh.material.emissiveIntensity = .35;
+    /* A capsule is not a climber. This is a figure: head, torso, two arms, two
+     * legs, with the limbs alternating as it climbs. Nothing here is art — it
+     * exists so a player can tell at a glance which thing on screen is them,
+     * which is the one visual bar the guidance actually sets. */
+    climberMesh = new T.Group();
+    world.add(climberMesh);
+    const skin = mat(colors.climber, .45);
+    skin.emissive = new T.Color(colors.climber);
+    skin.emissiveIntensity = .28;
+    const suit = mat(colors.suit, .5);
+    suit.emissive = new T.Color(colors.suit);
+    suit.emissiveIntensity = .18;
+
+    mesh(new T.SphereGeometry(.2, 12, 10), skin, climberMesh, 0, .52, 0);
+    mesh(new T.BoxGeometry(.34, .44, .26), suit, climberMesh, 0, .2, 0);
+    climberLimbs = {
+      armL: mesh(new T.BoxGeometry(.11, .34, .11), skin, climberMesh, -.24, .34, .04),
+      armR: mesh(new T.BoxGeometry(.11, .34, .11), skin, climberMesh, .24, .34, .04),
+      legL: mesh(new T.BoxGeometry(.13, .34, .13), suit, climberMesh, -.11, -.16, 0),
+      legR: mesh(new T.BoxGeometry(.13, .34, .13), suit, climberMesh, .11, -.16, 0),
+    };
+    // A pack, so the silhouette is asymmetric and reads as facing away from you.
+    mesh(new T.BoxGeometry(.26, .3, .14), mat(colors.pack, .6), climberMesh, 0, .22, -.2);
 
     /* The storm is one slab whose top edge is the number. No simulation — the
      * guidance bans weather systems and this stays a rising threshold. */
     stormMesh = mesh(new T.BoxGeometry(config.laneWidth * config.lanes + 3, 60, 3), mat(colors.storm, .95), world, 0, -60, .6);
     stormMesh.material.transparent = true;
     stormMesh.material.opacity = .82;
+
+    /* Additive and unlit, or it renders as a solid grey rectangle that reads
+     * as a rendering bug rather than as a flash. Narrow, so it is a bolt. */
+    lightning = mesh(
+      new T.PlaneGeometry(.14, 3.4),
+      new T.MeshBasicMaterial({ color: 0xfff4d0, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false }),
+      world, 0, -60, .78);
+    lightning.visible = false;
+    lightning.userData.flash = 0;
   }
 
   /* ── the world grid ─────────────────────────────────────────────────────────
@@ -242,18 +272,33 @@
         const x = laneX(lane), y = f;
         if (kind !== 'gap') {
           mesh(new T.BoxGeometry(config.laneWidth * .88, .16, .8), mat(colors.ledge), game.props, x, y, 0);
+        } else {
+          /* A gap was drawn as nothing at all, which reads as "no information"
+           * rather than "danger". Broken stubs at each side say a ledge used to
+           * be here and is not any more. */
+          for (const side of [-1, 1]) {
+            const stub = mesh(new T.BoxGeometry(config.laneWidth * .2, .16, .8), mat(colors.rubble), game.props,
+              x + side * config.laneWidth * .34, y, 0);
+            stub.rotation.z = side * .28;
+          }
         }
         if (kind === 'energy') {
-          const e = mesh(new T.OctahedronGeometry(.24), mat(colors.energy, .3), game.props, x, y + .5, .5);
+          const e = mesh(new T.OctahedronGeometry(.26), mat(colors.energy, .25), game.props, x, y + .55, .5);
           e.material.emissive = new T.Color(colors.energy);
-          e.material.emissiveIntensity = .6;
+          e.material.emissiveIntensity = .75;
+          e.userData.baseY = y + .55;
           game.spins.push(e);
         }
         if (kind === 'hazard') {
-          const h = mesh(new T.ConeGeometry(.28, .62, 4), mat(colors.hazard, .5), game.props, x, y + .42, .5);
-          h.rotation.y = Math.PI / 4;
-          h.material.emissive = new T.Color(colors.hazard);
-          h.material.emissiveIntensity = .35;
+          /* Three spikes, not one cone. A row of spikes is the most universally
+           * understood "do not touch" shape there is, and it cannot be mistaken
+           * for the climber or for a pickup. */
+          const spikeMat = mat(colors.hazard, .45);
+          spikeMat.emissive = new T.Color(colors.hazard);
+          spikeMat.emissiveIntensity = .45;
+          for (const off of [-.32, 0, .32]) {
+            mesh(new T.ConeGeometry(.14, .46, 6), spikeMat, game.props, x + off, y + .31, .4);
+          }
         }
       }
     }
@@ -299,6 +344,8 @@
       over: null, banked: 0, newBest: false,
       sectionRoutes: new Map(), generatedTo: 0, nextSplit: config.splitEvery,
       collected: 0, spent: 0, slips: 0,
+      hint: null, hintRank: -1, hintUntil: 0, hintTime: 0,
+      taughtJump: false, taughtSwipe: false,
     };
 
     ensureGenerated();
@@ -340,6 +387,9 @@
       game.energy += band.mult;
       game.collected += band.mult;
       showFeed(band.mult > 1 ? `+${band.mult}  ${band.label}` : '+1');
+      ui.energy.classList.remove('pulse');
+      void ui.energy.offsetWidth;
+      ui.energy.classList.add('pulse');
       return;
     }
 
@@ -368,6 +418,7 @@
     }
     game.floor = Math.max(game.storm, game.floor - config.slip);
     game.slips++;
+    shake = 1;
     hurt(reason);
   }
 
@@ -378,6 +429,7 @@
   const climbSpeed = () => Math.pow(config.speedRamp, Math.max(0, game.floor)) / config.climbTime;
 
   function tick(dt) {
+    game.hintTime += dt;
     const before = Math.floor(game.floor);
     const speed = climbSpeed();
     game.floor += speed * dt;
@@ -517,38 +569,107 @@
     ui.buyGrapple.disabled = !canAfford('grapple');
     ui.buyShield.classList.toggle('active', game.shield);
 
-    // The route the climber is currently steering into, named before the split.
-    const here = routesAt(game.floor);
-    const ahead = routesAt(game.floor + config.splitEvery);
+    const [text, tone] = hint();
+    ui.routeHint.textContent = text;
+    ui.routeHint.className = `route-hint ${tone}`;
+  }
+
+  /*
+   * There is no tutorial screen, so this one line is the whole tutorial.
+   * Ordered by what the player needs to know NOW: the thing about to hurt them,
+   * then the thing that pays, then the choice, then the ambient state. The
+   * first playtest said "I don't know how to play" — everything the game knew
+   * was on screen except the part that tells you what to do about it.
+   */
+  function wantedHint() {
+    if (!game.running) return [4, 'Swipe to change lane · tap to jump', ''];
+
+    // What is directly above you decides everything for the next second.
+    const next = Math.floor(game.floor) + 1;
+    const ahead = game.cells.get(`${game.lane}:${next}`);
+    if (ahead === 'gap') { game.taughtJump = true; return [5, 'GAP AHEAD — TAP TO JUMP', 'danger']; }
+    if (ahead === 'hazard') { game.taughtJump = true; return [5, 'SPIKES — TAP TO JUMP OR SWIPE AWAY', 'danger']; }
+
+    const band = riskBand();
+    if (band.mult >= 4) return [4, `IN THE TEETH · energy pays ×${band.mult}`, 'danger'];
+    if (band.mult >= 2) return [3, `Close to the storm · energy pays ×${band.mult}`, 'close'];
+
     const toSplit = game.nextSplit - game.floor;
-    const name = here?.[game.lane] || '';
-    ui.routeHint.textContent = !game.running
-      ? 'Swipe to change lane · tap to jump'
-      : toSplit <= 2
-        ? `${ahead[game.lane]} ahead · choose your lane`
-        : `${name} lane`;
-    ui.routeHint.className = `route-hint ${(toSplit <= 2 ? ahead[game.lane] : name).toLowerCase()}`;
+    if (toSplit <= 2.5) {
+      const routes = routesAt(game.floor + config.splitEvery);
+      return [3, `${routes[game.lane]} ahead · swipe to choose`, routes[game.lane].toLowerCase()];
+    }
+
+    // Nothing urgent: teach the thing that makes the game make sense.
+    if (game.floor > 3 && band.mult === 1) return [1, 'Too far above the storm · energy only pays ×1', ''];
+    const name = routesAt(game.floor)?.[game.lane] || '';
+    return [0, `${name} lane`, name.toLowerCase()];
+  }
+
+  /* A line holds for hintDwell unless something more urgent wants the slot, so
+   * a line can actually be finished. Threats always preempt. */
+  function hint() {
+    const [rank, text, tone] = wantedHint();
+    if (game.hint === null || rank > game.hintRank || game.hintTime >= game.hintUntil) {
+      if (text !== game.hint) game.hintUntil = game.hintTime + config.hintDwell;
+      game.hint = text;
+      game.hintRank = rank;
+      game.hintTone = tone;
+    }
+    return [game.hint, game.hintTone || ''];
   }
 
   function render(dt) {
     // The eye gets an eased lane; the grid never does.
     game.laneVisual += (game.lane - game.laneVisual) * Math.min(1, dt * 18);
-    const arc = game.airborne > 0
+    const jumping = game.airborne > 0;
+    const arc = jumping
       ? Math.sin((1 - game.airborne / config.jumpTime) * Math.PI) * config.jumpHeight
       : 0;
     climberMesh.position.set(laneX(game.laneVisual), game.floor + .55 + arc, .9);
-    climberMesh.rotation.z = (game.lane - game.laneVisual) * .5;
+    climberMesh.rotation.z = (game.lane - game.laneVisual) * .45;
+
+    /* Limbs alternate as it climbs and tuck mid-jump. The cheapest possible way
+     * to say "this is a person climbing" rather than "this is a shape moving
+     * upward", which is the note the first playtest gave. */
+    if (climberLimbs) {
+      const swing = Math.sin(clock * 11) * .7;
+      const tuck = jumping ? -1.1 : 0;
+      climberLimbs.armL.rotation.x = swing + tuck;
+      climberLimbs.armR.rotation.x = -swing + tuck;
+      climberLimbs.legL.rotation.x = -swing * .7 - (jumping ? .9 : 0);
+      climberLimbs.legR.rotation.x = swing * .7 - (jumping ? .9 : 0);
+    }
 
     stormMesh.position.y = game.storm - 30;
-    for (const e of game.spins) e.rotation.y += dt * 2.4;
+    stormMesh.scale.x = 1 + Math.sin(clock * 2.2) * .015;   // the front churns
+
+    /* Lightning inside the storm. It is the only thing telling the player the
+     * danger band is alive and worth being near. One timer, one plane. */
+    lightningTimer -= dt;
+    if (lightningTimer <= 0) {
+      lightningTimer = .45 + Math.random() * 1.5;
+      lightning.position.set(laneX(Math.floor(Math.random() * config.lanes)) + (Math.random() - .5) * .5, game.storm - 1, .78);
+      lightning.rotation.z = (Math.random() - .5) * .3;
+      lightning.userData.flash = .16;
+    }
+    lightning.userData.flash = Math.max(0, lightning.userData.flash - dt);
+    lightning.visible = lightning.userData.flash > 0;
+    lightning.material.opacity = (lightning.userData.flash / .16) * .85;
+
+    for (const e of game.spins) {
+      e.rotation.y += dt * 2.4;
+      e.position.y = e.userData.baseY + Math.sin(clock * 3 + e.userData.baseY) * .09;
+    }
 
     const view = 12;
     const host = ui.game.parentElement, rect = host.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const aspect = rect.width / rect.height;
-    // The climber sits low in frame so the player reads what is coming, not
-    // what is passed.
-    const centre = game.floor + view * .18;
+    /* The climber sits low in frame so the player reads what is coming rather
+     * than what is passed. Shake decays out of the value a slip sets. */
+    shake = Math.max(0, shake - dt * 3.2);
+    const centre = game.floor + view * .18 + Math.sin(clock * 55) * shake * .32;
     camera.top = centre + view / 2;
     camera.bottom = centre - view / 2;
     camera.left = -view * aspect / 2;
@@ -638,7 +759,7 @@
       energy: game?.energy, shield: game?.shield,
       storm: game?.storm, stormGap: (game?.floor ?? 0) - (game?.storm ?? 0),
       stormFraction: game?.stormFraction, climbSpeed: game ? climbSpeed() : 0, peak: game?.peak,
-      multiplier: game?.running ? riskBand().mult : 1,
+      multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint,
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered,
       routes: game && routesAt(game.floor), routesAhead: game && routesAt(game.floor + config.splitEvery),
       nextSplit: game?.nextSplit, generatedTo: game?.generatedTo,
