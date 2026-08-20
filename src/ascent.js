@@ -60,7 +60,12 @@
      */
     coyote: .12,             // seconds after leaving a ledge that a jump still works
     buffer: .12,             // seconds before landing that a jump press is remembered
-    jumpTime: .42,           // seconds airborne, fixed: a jump is a kinematic arc
+    /* A jump lasts until just past the NEXT floor line, not a fixed 0.42s.
+     * Fixed-duration jumps were shorter than the ~1.15s it takes to cross a
+     * floor, so a jump usually expired before reaching the thing it was aimed
+     * at — which is exactly why the playtest asked what jump was even for.
+     * Defining it in floors rather than seconds makes it always do its job. */
+    jumpClear: .18,          // extra seconds held past the floor line, for forgiveness
     jumpHeight: .55,         // floors of arc, purely visual — the grid decides outcomes
 
     /*
@@ -103,7 +108,7 @@
   const colors = {
     sky: 0x121a2e, tower: 0x2b3350, towerEdge: 0x3d4870, ledge: 0x55628f,
     climber: 0xffd9a0, suit: 0x3f7fd6, pack: 0x2b3350,
-    energy: 0x66e0c8, hazard: 0xe0556b, storm: 0x4a2440, rubble: 0x6b5560,
+    energy: 0x66e0c8, hazard: 0xe0556b, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0xffb45c,
     safe: 0x63c47a, danger: 0xe0556b, unknown: 0xc79bf0, beacon: 0xffe066,
   };
 
@@ -118,8 +123,8 @@
   const loadBest = () => { try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; } };
   const saveBest = n => { try { localStorage.setItem(BEST_KEY, String(n)); } catch { /* not worth a crash */ } };
 
-  let renderer, scene, camera, world, climberMesh, climberLimbs, stormMesh, lightning, clock = 0, last = 0;
-  let shake = 0, lightningTimer = 1;
+  let renderer, scene, camera, world, climberMesh, climberLimbs, shieldMesh, stormMesh, lightning, clock = 0, last = 0;
+  let shake = 0, flash = 0, lightningTimer = 1;
   let game = null;
 
   const mat = (color, roughness = .8) => new T.MeshStandardMaterial({ color, roughness, metalness: 0 });
@@ -179,10 +184,30 @@
 
   function buildStatics() {
     // The tower face sits behind the lanes so the climber always reads in front.
-    mesh(new T.BoxGeometry(config.laneWidth * config.lanes + 1.4, 400, 1), mat(colors.tower), world, 0, 180, -1.4);
+    mesh(new T.BoxGeometry(config.laneWidth * config.lanes + 1.4, 400, 1), mat(colors.tower), world, 0, 180, -1.5);
     for (let i = 0; i <= config.lanes; i++) {
       mesh(new T.BoxGeometry(.06, 400, .2), mat(colors.towerEdge), world,
         laneX(i) - config.laneWidth / 2, 180, -.85);
+    }
+
+    /* Windows up the tower face. Without something passing, vertical motion is
+     * invisible however well the body is animated — that was the playtest note
+     * about the climb feeling like an elevator. A few are still lit, which
+     * gives the eye something to track and says the tower is abandoned rather
+     * than empty. Built once, never touched again. */
+    const dark = mat(colors.window, .95);
+    const lit = mat(colors.windowLit, .4);
+    lit.emissive = new T.Color(colors.windowLit);
+    lit.emissiveIntensity = .5;
+    for (let f = -2; f < 130; f++) {
+      for (let lane = 0; lane < config.lanes; lane++) {
+        if ((f * 7 + lane * 3) % 5 > 2) continue;
+        const onFire = (f * 13 + lane * 5) % 17 === 0;
+        mesh(new T.BoxGeometry(.36, .52, .12), onFire ? lit : dark, world,
+          // z must clear the tower's front face at -1.0, or the windows are
+          // embedded inside the wall and invisible. They were.
+          laneX(lane) + ((f + lane) % 2 ? .36 : -.36), f + .55, -.92);
+      }
     }
 
     /* A capsule is not a climber. This is a figure: head, torso, two arms, two
@@ -198,6 +223,7 @@
     suit.emissive = new T.Color(colors.suit);
     suit.emissiveIntensity = .18;
 
+    skin.userData = {}; suit.userData = {};
     mesh(new T.SphereGeometry(.2, 12, 10), skin, climberMesh, 0, .52, 0);
     mesh(new T.BoxGeometry(.34, .44, .26), suit, climberMesh, 0, .2, 0);
     climberLimbs = {
@@ -208,6 +234,16 @@
     };
     // A pack, so the silhouette is asymmetric and reads as facing away from you.
     mesh(new T.BoxGeometry(.26, .3, .14), mat(colors.pack, .6), climberMesh, 0, .22, -.2);
+
+    /* A bought shield was only visible as a highlight on the button that bought
+     * it, which is the wrong place — the player is looking at the climber. */
+    shieldMesh = mesh(new T.SphereGeometry(.62, 14, 12),
+      new T.MeshBasicMaterial({ color: colors.energy, transparent: true, opacity: .22, depthWrite: false }),
+      climberMesh, 0, .2, 0);
+    shieldMesh.visible = false;
+    climberMesh.traverse(o => {
+      if (o.material && o.material.emissive) o.userData.baseColor = o.material.emissive.getHex();
+    });
 
     /* The storm is one slab whose top edge is the number. No simulation — the
      * guidance bans weather systems and this stays a rising threshold. */
@@ -288,6 +324,7 @@
           e.material.emissiveIntensity = .75;
           e.userData.baseY = y + .55;
           game.spins.push(e);
+          game.meshes.set(`${lane}:${f}`, e);
         }
         if (kind === 'hazard') {
           /* Three spikes, not one cone. A row of spikes is the most universally
@@ -330,6 +367,8 @@
       rand: rng(seed ?? ((Date.now() ^ (Math.random() * 1e9)) >>> 0)),
       props, spins: [],
       cells: new Map(),
+      meshes: new Map(),   // cell key -> mesh, so a collected fragment can be removed
+      popping: [],         // meshes mid-pickup animation
       lane: 1,
       laneVisual: 1,       // eased toward `lane` for the eye only; the grid uses `lane`
       floor: 0,            // continuous height in floors
@@ -337,13 +376,14 @@
       storm: config.stormStart,
       stormFraction: config.stormFraction,
       airborne: 0,         // seconds left in the current jump arc
+      jumpSpan: 1,         // how long that arc was, so it can be drawn
       peak: 0,             // highest floor reached, which is what a slip takes back
       coyote: 0, buffered: 0,
       shield: false,
       running: false, paused: false,
       over: null, banked: 0, newBest: false,
       sectionRoutes: new Map(), generatedTo: 0, nextSplit: config.splitEvery,
-      collected: 0, spent: 0, slips: 0,
+      collected: 0, spent: 0, slips: 0, skipped: 0,
       hint: null, hintRank: -1, hintUntil: 0, hintTime: 0,
       taughtJump: false, taughtSwipe: false,
     };
@@ -351,6 +391,11 @@
     ensureGenerated();
     sync();
   }
+
+  /* Expressing the storm as a share of climb speed rather than an absolute
+   * keeps the chase tight however fast the climb gets. Declared here because
+   * the jump length is measured in floors and needs it. */
+  const climbSpeed = () => Math.pow(config.speedRamp, Math.max(0, game.floor)) / config.climbTime;
 
   // ── input ──────────────────────────────────────────────────────────────────
 
@@ -362,12 +407,19 @@
     return true;
   }
 
+  /* Long enough to clear the next floor line whenever it is pressed. */
+  const jumpDuration = () => {
+    const toNext = (Math.floor(game.floor) + 1 - game.floor) / climbSpeed();
+    return toNext + config.jumpClear;
+  };
+
   function jump() {
     if (!game.running) return false;
     // Buffered: pressing just before you land still counts, which is most of
     // what "responsive" means in a platformer.
     if (game.airborne > 0 && game.coyote <= 0) { game.buffered = config.buffer; return false; }
-    game.airborne = config.jumpTime;
+    game.airborne = jumpDuration();
+    game.jumpSpan = game.airborne;      // kept so the arc can be drawn over its real length
     game.coyote = 0;
     game.buffered = 0;
     return true;
@@ -378,11 +430,34 @@
   /* Everything that resolves does so when the climber crosses a floor line.
    * That is the only moment the grid is consulted, which is what makes the
    * whole thing deterministic and testable. */
+  /*
+   * A jump SKIPS a floor rather than merely surviving it. Nothing on a skipped
+   * floor resolves — no spikes, and no energy either.
+   *
+   * The playtest asked what jump was for, and the honest answer was nothing: a
+   * clear lane is guaranteed on every floor, so swiping always sufficed.
+   * Skipping makes it a trade in the game's own currency — jump past a floor
+   * you cannot reach safely, and pay for it by leaving that floor's energy
+   * behind.
+   */
   function crossFloor(f) {
+    if (game.airborne > 0) { game.skipped++; return; }
+
     const kind = game.cells.get(`${game.lane}:${f}`);
 
     if (kind === 'energy') {
-      game.cells.delete(`${game.lane}:${f}`);
+      const key = `${game.lane}:${f}`;
+      game.cells.delete(key);
+      /* Remove the mesh. It used to stay on screen after being collected, so
+       * picking a fragment up looked like nothing had happened at all — the
+       * single worst piece of feedback in the build. */
+      const m = game.meshes.get(key);
+      if (m) {
+        game.meshes.delete(key);
+        game.spins.splice(game.spins.indexOf(m), 1);
+        m.userData.pop = 1;
+        game.popping.push(m);
+      }
       const band = riskBand();
       game.energy += band.mult;
       game.collected += band.mult;
@@ -392,9 +467,6 @@
       ui.energy.classList.add('pulse');
       return;
     }
-
-    // A jump carries you over a gap or a hazard. That is the entire skill.
-    if (game.airborne > 0) return;
 
     if (kind === 'gap') return slip('SLIPPED');
     if (kind === 'hazard') return slip('HIT');
@@ -418,15 +490,10 @@
     }
     game.floor = Math.max(game.storm, game.floor - config.slip);
     game.slips++;
-    shake = 1;
-    hurt(reason);
+    shake = 1.6;
+    flash = 1;                       // the climber flares red and drops
+    hurt(`${reason}  −${config.slip} FLOORS`);
   }
-
-  /* Expressing the storm as a share of climb speed rather than an absolute
-   * keeps the chase tight however fast the climb gets. Above 1.0 it gains on a
-   * clean run, which is what forces energy to be spent in the last section —
-   * and spending it is spending the score. */
-  const climbSpeed = () => Math.pow(config.speedRamp, Math.max(0, game.floor)) / config.climbTime;
 
   function tick(dt) {
     game.hintTime += dt;
@@ -445,7 +512,7 @@
     }
     if (game.buffered > 0) {
       game.buffered = Math.max(0, game.buffered - dt);
-      if (game.airborne === 0) { game.buffered = 0; game.airborne = config.jumpTime; }
+      if (game.airborne === 0) { game.buffered = 0; game.airborne = jumpDuration(); game.jumpSpan = game.airborne; }
     }
 
     for (let f = before + 1; f <= after; f++) {
@@ -564,9 +631,17 @@
     ui.costShield.textContent = config.cost.shield;
     ui.costSurge.textContent = config.cost.surge;
     ui.costGrapple.textContent = config.cost.grapple;
-    ui.buyShield.disabled = !canAfford('shield');
-    ui.buySurge.disabled = !canAfford('surge');
-    ui.buyGrapple.disabled = !canAfford('grapple');
+    /* A disabled button that says nothing teaches nothing. Each one now states
+     * either what it does or exactly how much more energy it needs. */
+    for (const [kind, btn] of [['shield', ui.buyShield], ['surge', ui.buySurge], ['grapple', ui.buyGrapple]]) {
+      const afford = canAfford(kind);
+      btn.disabled = !afford;
+      const short = config.cost[kind] - game.energy;
+      const note = btn.querySelector('small');
+      if (kind === 'shield' && game.shield) note.textContent = 'active';
+      else if (!afford && short > 0) note.textContent = `need ${short} more`;
+      else note.textContent = note.dataset.label;
+    }
     ui.buyShield.classList.toggle('active', game.shield);
 
     const [text, tone] = hint();
@@ -624,22 +699,55 @@
     game.laneVisual += (game.lane - game.laneVisual) * Math.min(1, dt * 18);
     const jumping = game.airborne > 0;
     const arc = jumping
-      ? Math.sin((1 - game.airborne / config.jumpTime) * Math.PI) * config.jumpHeight
+      ? Math.sin((1 - game.airborne / (game.jumpSpan || 1)) * Math.PI) * config.jumpHeight
       : 0;
-    climberMesh.position.set(laneX(game.laneVisual), game.floor + .55 + arc, .9);
-    climberMesh.rotation.z = (game.lane - game.laneVisual) * .45;
+    /*
+     * The climb is STEPPED, not smooth. The simulation advances `floor`
+     * continuously — that stays exactly as it was, so nothing about collision
+     * or determinism changes — but the body is drawn lunging to the next ledge
+     * and settling on it.
+     *
+     * A playtest note: "there is no climbing action, just the whole thing move
+     * down by default". It was right. A body gliding upward at a constant rate
+     * past a scrolling wall is an elevator. A body that reaches, pulls, and
+     * lands on each ledge in turn is climbing, and it is the same number
+     * rendered differently.
+     */
+    const phase = game.floor - Math.floor(game.floor);
+    const pull = 1 - Math.pow(1 - phase, 2.4);      // fast lunge, then settle
+    const settle = Math.sin(Math.min(1, phase * 3.2) * Math.PI) * .06;
+    const climbY = jumping ? game.floor : Math.floor(game.floor) + pull;
 
-    /* Limbs alternate as it climbs and tuck mid-jump. The cheapest possible way
-     * to say "this is a person climbing" rather than "this is a shape moving
-     * upward", which is the note the first playtest gave. */
+    climberMesh.position.set(laneX(game.laneVisual), climbY + .55 + arc - settle, .9);
+    climberMesh.rotation.z = (game.lane - game.laneVisual) * .45;
+    climberMesh.scale.y = 1 - settle * 1.4;         // a small compression on landing
+
+    /* A slip flares the whole body red. Collecting pops a green fragment
+     * upward; slipping turns the player red and drops them. The playtest could
+     * not tell the two apart, and they should not be confusable at all. */
+    flash = Math.max(0, flash - dt * 2.4);
+    climberMesh.traverse(o => {
+      if (!o.material || !o.material.emissive) return;
+      if (o.userData.baseEmissive === undefined) o.userData.baseEmissive = o.material.emissiveIntensity || 0;
+      o.material.emissiveIntensity = o.userData.baseEmissive + flash * 1.6;
+      if (flash > 0) o.material.emissive.setHex(colors.hazard);
+      else if (o.userData.baseColor !== undefined) o.material.emissive.setHex(o.userData.baseColor);
+    });
+
+    /* Hand over hand, in time with the pull rather than on a free-running
+     * sine: one arm is reaching for the next ledge while the other holds. */
     if (climberLimbs) {
-      const swing = Math.sin(clock * 11) * .7;
+      const lead = Math.sin(phase * Math.PI * 2);
       const tuck = jumping ? -1.1 : 0;
-      climberLimbs.armL.rotation.x = swing + tuck;
-      climberLimbs.armR.rotation.x = -swing + tuck;
-      climberLimbs.legL.rotation.x = -swing * .7 - (jumping ? .9 : 0);
-      climberLimbs.legR.rotation.x = swing * .7 - (jumping ? .9 : 0);
+      const reach = -1.5 * (1 - pull);              // arms high at the start of a pull
+      climberLimbs.armL.rotation.x = reach + lead * .5 + tuck;
+      climberLimbs.armR.rotation.x = reach - lead * .5 + tuck;
+      climberLimbs.legL.rotation.x = -lead * .55 - (jumping ? .9 : 0);
+      climberLimbs.legR.rotation.x = lead * .55 - (jumping ? .9 : 0);
     }
+
+    shieldMesh.visible = game.shield;
+    if (game.shield) shieldMesh.scale.setScalar(1 + Math.sin(clock * 6) * .05);
 
     stormMesh.position.y = game.storm - 30;
     stormMesh.scale.x = 1 + Math.sin(clock * 2.2) * .015;   // the front churns
@@ -660,6 +768,19 @@
     for (const e of game.spins) {
       e.rotation.y += dt * 2.4;
       e.position.y = e.userData.baseY + Math.sin(clock * 3 + e.userData.baseY) * .09;
+    }
+
+    // Collected fragments burst upward and fade, so the pickup is unmissable.
+    for (let i = game.popping.length - 1; i >= 0; i--) {
+      const m = game.popping[i];
+      m.userData.pop -= dt * 3.4;
+      if (m.userData.pop <= 0) { game.props.remove(m); game.popping.splice(i, 1); continue; }
+      const t = 1 - m.userData.pop;
+      m.scale.setScalar(1 + t * 1.8);
+      m.position.y += dt * 3.2;
+      m.rotation.y += dt * 9;
+      m.material.opacity = m.userData.pop;
+      m.material.transparent = true;
     }
 
     const view = 12;
@@ -763,7 +884,7 @@
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered,
       routes: game && routesAt(game.floor), routesAhead: game && routesAt(game.floor + config.splitEvery),
       nextSplit: game?.nextSplit, generatedTo: game?.generatedTo,
-      collected: game?.collected, spent: game?.spent, slips: game?.slips,
+      collected: game?.collected, spent: game?.spent, slips: game?.slips, skipped: game?.skipped,
       banked: game?.banked, newBest: game?.newBest, best: loadBest(),
       summit: config.summit, cost: config.cost, slipFloors: config.slip,
     }),

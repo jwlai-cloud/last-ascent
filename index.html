@@ -34,13 +34,13 @@
         <p class="spend-copy">Energy is your score <b>and</b> your fuel. Ride close to the storm to earn more — spending to escape it costs you the run.</p>
         <div class="spend-row" aria-label="Spend energy">
           <button class="spend" id="buyShield" type="button" aria-label="Shield, absorbs one hit">
-            <span class="icon">🛡</span><span class="name">SHIELD</span><small>absorb one hit</small><b id="costShield">6</b>
+            <span class="icon">🛡</span><span class="name">SHIELD</span><small data-label="absorb one hit">absorb one hit</small><b id="costShield">6</b>
           </button>
           <button class="spend" id="buySurge" type="button" aria-label="Surge, pushes the storm back">
-            <span class="icon">⇡</span><span class="name">SURGE</span><small>push storm back</small><b id="costSurge">8</b>
+            <span class="icon">⇡</span><span class="name">SURGE</span><small data-label="push storm back">push storm back</small><b id="costSurge">8</b>
           </button>
           <button class="spend" id="buyGrapple" type="button" aria-label="Grapple two floors upward">
-            <span class="icon">⇱</span><span class="name">GRAPPLE</span><small>+2 floors</small><b id="costGrapple">10</b>
+            <span class="icon">⇱</span><span class="name">GRAPPLE</span><small data-label="+2 floors">+2 floors</small><b id="costGrapple">10</b>
           </button>
         </div>
       </section>
@@ -50,7 +50,7 @@
           <div class="modal-icon" id="modalIcon">🌩️</div>
           <p id="modalKicker">SURVIVAL &amp; RESOURCE MANAGEMENT</p>
           <h2 id="modalTitle">The Last Ascent</h2>
-          <p id="modalCopy">You cannot stop climbing and the storm never stops rising. <b>Swipe</b> to change lane, <b>tap</b> to jump a gap. Collect energy — it is your score <b>and</b> your only fuel, so every point spent surviving comes off the run. Hazards make you <b>slip</b>. And energy is worth <b>more the closer the storm is</b> — ×2 within three floors, ×4 within one and a half. Climb too fast and you outrun your own pay. Every four floors the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>. Reach floor 20 and keep what you did not spend.</p>
+          <p id="modalCopy">You cannot stop climbing and the storm never stops rising. <b>Swipe</b> to change lane, <b>tap</b> to jump — a jump <b>skips</b> the whole floor, spikes and energy alike. Collect energy — it is your score <b>and</b> your only fuel, so every point spent surviving comes off the run. Hazards make you <b>slip</b>. And energy is worth <b>more the closer the storm is</b> — ×2 within three floors, ×4 within one and a half. Climb too fast and you outrun your own pay. Every four floors the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>. Reach floor 20 and keep what you did not spend.</p>
           <button id="modalButton" type="button">START CLIMBING</button>
         </div>
       </section>
