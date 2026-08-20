@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#121a2e">
+    <title>The Last Ascent</title>
+    <link rel="stylesheet" href="./src/ascent.css">
+  </head>
+  <body>
+    <main class="game-shell" aria-label="The Last Ascent climbing game">
+      <header class="hud">
+        <div class="stat"><small>FLOOR</small><strong id="floor">0</strong><em>/<span id="summitGoal">20</span></em></div>
+        <div class="stat energy"><small>ENERGY</small><strong id="energy">0</strong></div>
+        <div class="stat best"><small>BEST</small><strong id="best">0</strong></div>
+        <button class="reset" id="reset" type="button" aria-label="Restart the run">↺</button>
+      </header>
+
+      <section class="arena" id="arena" aria-label="The tower">
+        <canvas id="game" aria-label="A climber ascending a tower above a rising storm."></canvas>
+
+        <!-- The storm gap is the only number that says how close you are to
+             losing, so it sits on screen permanently. -->
+        <!-- The gap and the multiplier are the same decision, so they are the
+             same widget: energy pays more the closer the storm is. -->
+        <div class="storm-pill" aria-live="polite"><span>STORM</span><b id="stormGap">4.0</b><span>below</span><i class="multiplier" id="multiplier">×1</i></div>
+        <div class="route-hint" id="routeHint">Swipe to change lane · tap to jump</div>
+        <div class="feed" id="feed" aria-live="polite"></div>
+      </section>
+
+      <!-- Energy is the score and the fuel, so spending is always visible next
+           to the number it comes out of. -->
+      <section class="spend-panel">
+        <p class="spend-copy">Energy is your score <b>and</b> your fuel. Ride close to the storm to earn more — spending to escape it costs you the run.</p>
+        <div class="spend-row" aria-label="Spend energy">
+          <button class="spend" id="buyShield" type="button" aria-label="Shield, absorbs one hit">
+            <span class="icon">🛡</span><span class="name">SHIELD</span><small>absorb one hit</small><b id="costShield">6</b>
+          </button>
+          <button class="spend" id="buySurge" type="button" aria-label="Surge, pushes the storm back">
+            <span class="icon">⇡</span><span class="name">SURGE</span><small>push storm back</small><b id="costSurge">8</b>
+          </button>
+          <button class="spend" id="buyGrapple" type="button" aria-label="Grapple two floors upward">
+            <span class="icon">⇱</span><span class="name">GRAPPLE</span><small>+2 floors</small><b id="costGrapple">10</b>
+          </button>
+        </div>
+      </section>
+
+      <section class="modal show" id="startModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-card">
+          <div class="modal-icon" id="modalIcon">🌩️</div>
+          <p id="modalKicker">SURVIVAL &amp; RESOURCE MANAGEMENT</p>
+          <h2 id="modalTitle">The Last Ascent</h2>
+          <p id="modalCopy">You cannot stop climbing and the storm never stops rising. <b>Swipe</b> to change lane, <b>tap</b> to jump a gap. Collect energy — it is your score <b>and</b> your only fuel, so every point spent surviving comes off the run. Hazards make you <b>slip</b>. And energy is worth <b>more the closer the storm is</b> — ×2 within three floors, ×4 within one and a half. Climb too fast and you outrun your own pay. Every four floors the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>. Reach floor 20 and keep what you did not spend.</p>
+          <button id="modalButton" type="button">START CLIMBING</button>
+        </div>
+      </section>
+    </main>
+    <script src="./vendor/three.min.js"></script>
+    <script src="./src/ascent.js"></script>
+  </body>
+</html>

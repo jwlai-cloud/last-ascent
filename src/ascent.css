@@ -1,0 +1,78 @@
+:root{--ink:#e8ecff;--deep:#0a0f1c;--panel:#151d33;--edge:#26304f;--energy:#66e0c8;--danger:#e0556b;--safe:#63c47a;--unknown:#c79bf0;--beacon:#ffe066}
+*{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#05080f;color:var(--ink);font-family:Inter,Avenir,"Helvetica Neue",Arial,sans-serif;overscroll-behavior:none}
+body{display:grid;place-items:center}
+button{font:inherit;touch-action:manipulation;color:inherit}
+
+/* Portrait is a competition rule. Type is an em of one shell-relative base so
+   the HUD scales with the frame instead of being fixed at phone sizes — the
+   base cannot use cqw, because an element cannot query its own container and
+   the fallback resolves against the viewport. */
+.game-shell{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:min(100vw,calc(100dvh * 9 / 16));height:100dvh;min-height:0;overflow:hidden;background:var(--deep);box-shadow:0 0 60px rgba(0,0,0,.6);font-size:clamp(15px,min(4.6vw,2.59dvh),30px)}
+
+.hud{z-index:3;display:flex;align-items:center;gap:.4em;padding:.5em .6em;background:var(--panel);border-bottom:2px solid var(--edge)}
+.stat{display:grid;gap:.1em;min-width:2.2em}
+.stat small{color:#7f8cb5;font-size:.47em;font-weight:900;letter-spacing:.13em}
+.stat strong{font-size:1.15em;line-height:1;font-variant-numeric:tabular-nums}
+.stat em{display:none}
+.stat.energy strong{color:var(--energy)}
+.stat.best{margin-left:auto}
+.stat.best strong{color:var(--beacon)}
+@keyframes throb{50%{opacity:.35}}
+.reset{padding:.3em .42em;border:1px solid #3a456b;border-radius:.4em;background:transparent;color:#7f8cb5;font-size:.8em;line-height:1}
+.reset.arm{border-color:var(--danger);color:var(--danger);font-size:.5em;font-weight:1000;letter-spacing:.08em}
+
+.arena{position:relative;min-height:0;overflow:hidden;background:#121a2e;touch-action:none;user-select:none}
+#game{display:block;width:100%;height:100%;touch-action:none}
+/* Damage has to register inside a second. */
+.arena.hurt::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at center,rgba(224,85,107,0) 40%,rgba(224,85,107,.6) 100%);animation:hurtflash .5s ease-out both}
+@keyframes hurtflash{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
+
+.storm-pill{position:absolute;left:50%;bottom:.6em;transform:translateX(-50%);display:flex;align-items:center;gap:.3em;padding:.32em .5em;border-radius:.4em;background:rgba(10,15,28,.8);border:1px solid #3a456b;font-size:.47em;font-weight:950;letter-spacing:.1em;color:#9fb0d8;white-space:nowrap;pointer-events:none}
+.storm-pill b{color:var(--energy);font-size:1.5em;font-variant-numeric:tabular-nums}
+.storm-pill.close{border-color:var(--beacon);background:rgba(60,45,12,.85)}
+.storm-pill.close b{color:var(--beacon)}
+.storm-pill.teeth{border-color:var(--danger);background:rgba(70,12,26,.9);animation:throb .5s ease-in-out infinite}
+.storm-pill.teeth b{color:var(--danger)}
+/* The multiplier is the reason to be down here, so it sits inside the danger
+   readout rather than somewhere safer on the HUD. */
+.multiplier{font-style:normal;padding:.1em .3em;border-radius:.25em;background:#2a3350;font-size:1.2em;font-weight:1000;color:#9fb0d8}
+.multiplier.close{background:var(--beacon);color:#3a2c05}
+.multiplier.teeth{background:var(--danger);color:#2a0410}
+
+.route-hint{position:absolute;top:.6em;left:50%;transform:translateX(-50%);padding:.32em .55em;border-radius:.4em;background:rgba(10,15,28,.78);font-size:.47em;font-weight:950;letter-spacing:.11em;color:#9fb0d8;white-space:nowrap;pointer-events:none}
+.route-hint.safe{color:var(--safe)}
+.route-hint.danger{color:var(--danger)}
+.route-hint.unknown{color:var(--unknown)}
+
+.feed{position:absolute;top:26%;left:50%;width:88%;transform:translateX(-50%);text-align:center;font-size:1.35em;font-weight:1000;letter-spacing:-.04em;text-shadow:0 3px 12px rgba(0,0,0,.8);pointer-events:none;min-height:1.6em}
+.feed.show{animation:pop .9s ease both}
+@keyframes pop{0%{opacity:0;transform:translate(-50%,10px) scale(.75)}22%,70%{opacity:1;transform:translate(-50%,0) scale(1)}100%{opacity:0;transform:translate(-50%,-26px) scale(1.05)}}
+
+.spend-panel{z-index:2;display:grid;gap:.4em;padding:.5em .6em calc(.5em + env(safe-area-inset-bottom));background:var(--panel);border-top:2px solid var(--edge)}
+.spend-copy{margin:0;color:#8e9cc4;font-size:.5em;line-height:1.45;text-align:center}
+.spend-copy b{color:var(--energy)}
+.spend-row{display:grid;grid-template-columns:repeat(3,1fr);gap:.35em}
+.spend{position:relative;display:grid;gap:.05em;padding:.45em .3em .38em;border:1px solid #35406a;border-radius:.5em;background:#1c2540;text-align:center}
+.spend .icon{font-size:1em;line-height:1}
+.spend .name{font-size:.6em;font-weight:1000;letter-spacing:.05em}
+.spend small{color:#8e9cc4;font-size:.42em;font-weight:800;letter-spacing:.05em}
+.spend b{position:absolute;top:.2em;right:.26em;padding:.05em .24em;border-radius:.28em;background:var(--energy);color:#06231e;font-size:.44em;font-weight:1000}
+.spend:active{transform:translateY(2px)}
+.spend:disabled{opacity:.38}
+.spend.active{border-color:var(--energy);box-shadow:0 0 0 1px var(--energy) inset}
+
+.modal{position:absolute;z-index:7;inset:0;display:grid;place-items:center;padding:1.2em;background:rgba(5,8,15,.82);opacity:0;visibility:hidden;pointer-events:none;transition:.2s}
+.modal.show{opacity:1;visibility:visible;pointer-events:auto}
+.modal-card{width:min(18em,94%);padding:1.2em 1em 1em;border-radius:.8em;text-align:center;background:#18213a;border:1px solid var(--edge);box-shadow:0 20px 50px rgba(0,0,0,.6)}
+.modal-icon{font-size:2.3em}
+.modal-card p,.modal-card h2{margin:0}
+.modal-card p:first-of-type{margin:.32em 0;color:#7f8cb5;font-size:.5em;font-weight:1000;letter-spacing:.14em}
+.modal-card h2{margin:.36em 0 .42em;font-size:1.5em;letter-spacing:-.04em}
+.modal-card #modalCopy{color:#9fb0d8;font-size:.62em;line-height:1.5}
+.modal-card #modalCopy b{color:var(--energy)}
+.modal-card button{width:100%;min-height:2.5em;margin-top:.9em;border:0;border-radius:.5em;color:#06231e;background:var(--energy);font-size:.72em;font-weight:1000;letter-spacing:.06em}
+.modal-card button:active{transform:translateY(2px)}
+
+@media (max-height:620px){.game-shell{font-size:clamp(13px,min(4.2vw,2.36dvh),24px)}}
+@media (min-width:461px){body{background:radial-gradient(circle at top,#1b2647,#05080f 65%)}}

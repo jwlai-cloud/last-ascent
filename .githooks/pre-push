@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# Refuses a direct push to main. Work goes to a branch and lands through a
+# pull request.
+#
+# This is a local guard, not branch protection: GitHub's real protection is
+# gated behind Pro for private repositories, so this covers the actual risk on
+# a solo repo — muscle memory typing `git push origin main` — and nothing more.
+# Anyone who means to bypass it can, with --no-verify.
+#
+# Enable in a fresh clone:  git config core.hooksPath .githooks
+
+protected="refs/heads/main"
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [ "$remote_ref" = "$protected" ]; then
+    echo ""
+    echo "  Refusing to push straight to main."
+    echo ""
+    echo "  Open a pull request instead:"
+    echo "    git switch -c my-branch && git push -u origin my-branch"
+    echo "    gh pr create --base main"
+    echo ""
+    echo "  Deliberate exception (release, emergency): git push --no-verify"
+    echo ""
+    exit 1
+  fi
+done
+
+exit 0

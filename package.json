@@ -1,0 +1,16 @@
+{
+  "name": "last-ascent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Portrait Three.js survival and resource management prototype for the Meta Horizon Creator Competition.",
+  "scripts": {
+    "serve": "python3 -m http.server 4190 --bind 127.0.0.1",
+    "test:smoke": "node tests/smoke.mjs",
+    "package": "node tools/package.mjs",
+    "test:zip": "node tools/verify-zip.mjs",
+    "test:package": "node tools/package.mjs && node tools/verify-package.mjs && node tools/verify-zip.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.0"
+  }
+}
