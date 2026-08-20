@@ -32,8 +32,9 @@ different pressures.
 ## Current state — build steps 1-3 done, playable end to end
 
 ```bash
-npm run serve        # 4190
-npm run test:smoke   # NOT WRITTEN YET — this is the next task
+npm run serve          # 4190
+npm run test:smoke     # 45/45
+npm run test:package   # packaging, the suite against the zip, then the zip itself
 ```
 
 Working: three snapped lanes, constant-but-accelerating climb, grid-cell world,
@@ -68,14 +69,14 @@ are reproducible, slips work.
 
 ## Next task, in order
 
-1. **Write `tests/smoke.mjs`.** Port the structure from `../beanstalk/tests/`,
-   which pauses the render loop and advances the sim by hand through
-   `window.ascent.step(dt, n)`. Playability is 25% and this is what defends it.
-   Assert: lane snapping, the grid resolving on floor crossings, coyote time and
-   input buffering actually working, the risk multiplier by band, slips costing
-   height, the storm overtaking a passive player, the summit banking and a death
-   banking nothing.
-2. **Then the playtest gate — five runs.** The test is whether the swipe
+1. ~~Write the smoke test.~~ Done: 45 checks, half of them driving the paused
+   simulation by hand. Writing it found two real bugs — the stopped-state hint
+   line held for 3.2 seconds into a run and outranked real advice, and body
+   text sat at 9.9px, under the readable floor. It also found a death spiral:
+   slipping drops you *below* the hazard you just hit, so you climb back into
+   it, and with the streak multiplier that is unavoidable. There is 1.4s of
+   recovery immunity now, and the climber blinks through it.
+2. **The playtest gate — five runs.** The test is whether the swipe
    disappears from your attention. If it does not, no design fixes it and the
    honest move is to ship `../beanstalk`.
 3. Tune the risk bands. `config.riskBands` is the single most load-bearing

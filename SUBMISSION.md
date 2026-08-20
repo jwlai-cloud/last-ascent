@@ -34,15 +34,23 @@ Run automatically; it refuses to write a zip that would fail.
 - `index.html` at the top level of the zip, not inside a folder
 - Inside the 35MB cap
 
-## Blocking before this can be submitted
+## Verified
 
-1. **There is no smoke test.** `../beanstalk` has 51 checks; this has none.
-   Everything is verified by scripted playthroughs and screenshots. Playability
-   is 25% and this is the gap.
-2. **Balance has never been tuned against a human.** Scripted policies read the
-   grid perfectly and a person does not, so the real difficulty is unknown.
-3. **Re-play since the feel changes.** The climbing motion, pickup feedback and
-   jump were all rewritten after the last play.
+```
+npm run test:package
+  7/7   packaging checks
+  45/45 smoke checks against the packaged build
+  8/8   zip checks, run the guidance's own way
+```
+
+## Still open
+
+1. **Balance has never been tuned against a human.** Scripted policies read the
+   grid perfectly and a person does not, so the real difficulty is a guess. The
+   suite pins the skill curve — a 90% player summits, a 20% player dies — but
+   where a real thumb sits on that scale is unknown.
+2. **Re-play since the feel changes.** Climbing motion, pickup feedback, jump,
+   lives, upgrades and sound all landed after the last play.
 
 ## Verify by hand before uploading
 

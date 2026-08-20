@@ -80,7 +80,7 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 @keyframes pop{0%{opacity:0;transform:translate(-50%,10px) scale(.75)}22%,70%{opacity:1;transform:translate(-50%,0) scale(1)}100%{opacity:0;transform:translate(-50%,-26px) scale(1.05)}}
 
 .spend-panel{z-index:2;display:grid;gap:.4em;padding:.5em .6em calc(.5em + env(safe-area-inset-bottom));background:var(--panel);border-top:2px solid var(--edge)}
-.spend-copy{margin:0;color:#8e9cc4;font-size:.5em;line-height:1.45;text-align:center}
+.spend-copy{margin:0;color:#8e9cc4;font-size:.62em;line-height:1.45;text-align:center}
 .spend-copy b{color:var(--energy)}
 .spend-row{display:grid;grid-template-columns:repeat(3,1fr);gap:.35em}
 .spend{position:relative;display:grid;gap:.05em;padding:.45em .3em .38em;border:1px solid #35406a;border-radius:.5em;background:#1c2540;text-align:center}

@@ -86,40 +86,42 @@ await page.goto(`${origin}/index.html`);
 await page.waitForFunction(() => window.ascent, null, { timeout: 15000 });
 check('the unzipped build boots from a local server with the internet off', true);
 
-// 6. Play a full session in portrait: start, build by real taps, reach the
-//    cloud line, flower, and confirm the banked score survives into a new run.
+// 6. Play a full session in portrait: start, tap a real button, climb to the
+//    summit, and confirm the banked score survives into a second run.
 await page.click('#modalButton');
 await page.waitForTimeout(1200);
 const opening = await page.evaluate(() => window.ascent.getState());
-check('a run starts and sugar accrues', opening.running && opening.sugar > 30,
-  `${opening.climate} run, ${opening.sugar.toFixed(1)} sugar`);
+check('a run starts and the climb advances', opening.running && opening.floor > 0.2,
+  `floor ${opening.floor.toFixed(2)}, storm gap ${opening.stormGap.toFixed(1)}`);
 
-// Stem before leaf: leaves are one per segment, so at height 1 the LEAF
-// button is correctly disabled until there is somewhere to put one.
-for (const id of ['#buyRoot', '#buyStem', '#buyLeaf']) await page.click(id);
+await page.evaluate(() => { window.ascent.mute(true); window.ascent.setEnergy(40); });
+await page.click('#buyShield');
 const tapped = await page.evaluate(() => window.ascent.getState());
-check('build buttons respond to real taps',
-  tapped.roots === 2 && tapped.height === 2 && tapped.leaves === 2,
-  `${tapped.roots} roots, height ${tapped.height}, ${tapped.leaves} leaves`);
+check('a spend button responds to a real tap', tapped.shield === true && tapped.spent >= tapped.cost.shield,
+  `shield ${tapped.shield}, spent ${tapped.spent}`);
 
 const won = await page.evaluate(() => {
-  const b = window.ascent;
-  b.setSugar(1e6);
-  while (b.getState().height < b.getState().goal) b.buy('stem');
-  return b.getState();
+  const a = window.ascent;
+  a.start(11); a.pause(true); a.mute(true);
+  let n = 0;
+  while (a.getState().running && a.getState().floorInt < a.getState().summit && n < 20000) {
+    const s = a.getState(), next = Math.floor(s.floor) + 1;
+    const clear = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, next)));
+    const e = clear.filter(l => a.cellAt(l, next) === 'energy');
+    const want = e.length ? e[0] : (clear[0] ?? s.lane);
+    if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
+    a.step(0.05); n++;
+  }
+  return { ...a.getState(), seconds: n * 0.05 };
 });
-check('the cloud line is reachable and unlocks the flower',
-  won.reached && won.running && !won.over, `height ${won.height}`);
-
-await page.click('#flower');
-const banked = await page.evaluate(() => window.ascent.getState());
-check('flowering banks the run and ends it', banked.over === 'flowered' && banked.banked === won.height,
-  `banked ${banked.banked}`);
+check('the summit is reachable in the packaged build',
+  won.over === 'summit' && won.floorInt >= won.summit,
+  `floor ${won.floorInt}/${won.summit} in ${won.seconds.toFixed(0)}s, banked ${won.banked}`);
 
 await page.click('#modalButton');
 const again = await page.evaluate(() => window.ascent.getState());
-check('a second run starts and remembers the score', again.running && again.height === 1 && again.best === banked.banked,
-  `best ${again.best}`);
+check('a second run starts and remembers the score',
+  again.running && again.floorInt === 0 && again.best === won.banked, `best ${again.best}`);
 
 check('portrait frame never scrolled', await page.evaluate(
   () => document.documentElement.scrollHeight <= window.innerHeight));

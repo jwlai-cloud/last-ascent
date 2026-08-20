@@ -87,6 +87,14 @@
 
     /* Hits in quick succession cost progressively more height. One mistake is
      * a stumble; three in a row is a fall. */
+    /*
+     * Recovery after a slip. Without it, dropping 1.5 floors puts you BELOW the
+     * hazard you just hit, so you climb straight back into it — and the streak
+     * multiplier turns that into an unavoidable death spiral. During recovery
+     * you can still collect; you just cannot be hit again.
+     */
+    recover: 1.4,            // seconds of immunity after a slip
+
     comboWindow: 4,          // floors of clean climbing that clears the streak
     comboGrowth: .7,         // extra slip per repeat, as a share of the base
     maxSlip: 5,
@@ -533,6 +541,7 @@
       stormFraction: config.stormFraction,
       health: config.health,
       combo: 0, comboAt: 0,   // consecutive hits, and the floor of the last one
+      recover: 0,          // seconds of post-slip immunity remaining
       airborne: 0,         // seconds left in the current jump arc
       jumpSpan: 1,         // how long that arc was, so it can be drawn
       peak: 0,             // highest floor reached, which is what a slip takes back
@@ -630,6 +639,9 @@
 
     if (kind === 'energy') { collect(game.lane, f); return; }
 
+    // Immune while recovering from the last slip, but still able to collect.
+    if (game.recover > 0) return;
+
     if (kind === 'gap') return slip('SLIPPED');
     if (kind === 'hazard') return slip('HIT');
   }
@@ -688,6 +700,7 @@
     game.floor = Math.max(game.storm, game.floor - cost);
     game.health--;
     game.slips++;
+    game.recover = config.recover;
     shake = 1.6 + game.combo * .3;
     sound('slip');
     flash = 1;                       // the climber flares red and drops
@@ -713,6 +726,7 @@
     } else if (game.coyote > 0) {
       game.coyote = Math.max(0, game.coyote - dt);
     }
+    if (game.recover > 0) game.recover = Math.max(0, game.recover - dt);
     if (game.buffered > 0) {
       game.buffered = Math.max(0, game.buffered - dt);
       if (game.airborne === 0) { game.buffered = 0; game.airborne = jumpDuration(); game.jumpSpan = game.airborne; }
@@ -1011,7 +1025,9 @@
       climberLimbs.legR.rotation.x = lead * .55 - (jumping ? .9 : 0);
     }
 
-    shieldMesh.visible = game.shield;
+    // Blink while recovering, so immunity is visible rather than inferred.
+    climberMesh.visible = game.recover <= 0 || Math.floor(clock * 12) % 2 === 0;
+    shieldMesh.visible = game.shield && climberMesh.visible;
     if (game.shield) shieldMesh.scale.setScalar(1 + Math.sin(clock * 6) * .05);
 
     stormMesh.position.y = game.storm - 30;
@@ -1085,6 +1101,7 @@
     ui.reset.textContent = '↺';
     reset(typeof seed === 'number' ? seed : undefined);
     game.running = true;
+    game.hint = null; game.hintRank = -1; game.hintUntil = 0;   // drop the stopped-state line
     ui.startModal.classList.remove('show');
     sync();
   }
@@ -1156,7 +1173,7 @@
       multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint,
       upgrades: game && { ...game.upgrades }, airJumps: game?.airJumps,
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
-      airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered,
+      airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
       routes: game && routesAt(game.floor), routesAhead: game && routesAt(game.floor + config.splitEvery),
       nextSplit: game?.nextSplit, generatedTo: game?.generatedTo,
       collected: game?.collected, spent: game?.spent, slips: game?.slips, skipped: game?.skipped,
@@ -1176,6 +1193,8 @@
      * stream, so seeding without a reset changes almost nothing. */
     seed: n => { const was = game.running; reset(n); game.running = was; },
     mute: on => { muted = !!on; },
+    grant: (id, n = 1) => { game.upgrades[id] = n; sync(); },   // tests need a perk without waiting for a split
+    setRecover: n => { game.recover = n; },
     clearBest: () => saveBest(0),
     pause: on => { game.paused = !!on; },
     step: (dt, times = 1) => { for (let i = 0; i < times && game.running; i++) tick(dt); },
