@@ -22,16 +22,34 @@
   const config = {
     lanes: 3,
     laneWidth: 1.55,
-    summit: 20,              // floors to the escape beacon
+    summit: 100,             // floors to the beacon. Almost nobody gets there.
+
+    /*
+     * Milestones every twenty floors, each one a SCORE SNAPSHOT: your energy
+     * total is recorded, and dying keeps the last snapshot rather than
+     * everything.
+     *
+     * A hundred-floor tower with banking only at the top would mean almost
+     * every run scores zero, which kills the chase the score exists to create.
+     * Snapshots keep a deep run worth something without softening the real
+     * asymmetry — everything collected since the last milestone is still lost,
+     * and spending still comes straight off the next snapshot.
+     */
+    milestoneEvery: 20,
+    titles: ['SURVIVOR', 'CLIMBER', 'ASCENDANT', 'STORMPROOF', 'THE LAST ASCENT'],
     /*
      * Speed is the escalation, the way it is in every runner. A constant
      * 1.1s per floor gave an attentive player over a second to read three
      * lanes and swipe, which is no decision at all — a scripted run took zero
      * damage on every seed. It tightens to about 0.6s by the summit.
      */
-    climbTime: 1.15,         // seconds per floor at floor zero
-    speedRamp: .975,         // multiplied per floor climbed
-    splitEvery: 4,           // floors between route choices — four choices per run
+    climbTime: 1.8,          // seconds per floor at floor zero
+    /* GREATER than one. It was .975, which made `pow(ramp, floor)` shrink with
+     * height, so the climb got steadily *slower* — the exact opposite of the
+     * intent — and because the storm is a share of climb speed the chase never
+     * tightened either. Speed is the escalation and it has to accelerate. */
+    speedRamp: 1.012,
+    splitEvery: 6,           // floors between choices — ten of them in a run
 
     /*
      * The storm. One rising number, never a weather simulation.
@@ -43,8 +61,8 @@
      * twenty; there was no game in it.
      */
     stormStart: -4,          // floors below the climber at the start
-    stormFraction: .80,      // storm speed as a share of CLIMB speed, not an absolute
-    stormRampAdd: .09,       // added at every split: .80 .89 .98 1.07 1.16
+    stormFraction: .78,      // storm speed as a share of CLIMB speed, not an absolute
+    stormRampAdd: .02,       // added at every split; sixteen of them reach 1.10
 
     /*
      * A hit costs height, not hit points. This is the only failure axis in the
@@ -53,6 +71,25 @@
      * failure meters for one event is the "six things that half-work" trap.
      */
     slip: 1.5,               // floors lost to a hazard or a missed ledge
+
+    /*
+     * Health is back, and the numbers are why. Over a hundred floors, losing
+     * only height meant mistakes were unlimited: a scripted run took twenty
+     * eight hits and still reached the summit. Health bounds sloppiness in a
+     * way height loss cannot.
+     *
+     * It is not a second economy. There is no heal to buy — a milestone
+     * restores one, so the arc of a run is survive to the next checkpoint,
+     * bank, patch up, go again.
+     */
+    health: 3,
+    healOnMilestone: 1,
+
+    /* Hits in quick succession cost progressively more height. One mistake is
+     * a stumble; three in a row is a fall. */
+    comboWindow: 4,          // floors of clean climbing that clears the streak
+    comboGrowth: .7,         // extra slip per repeat, as a share of the base
+    maxSlip: 5,
 
     /*
      * Input forgiveness. Not polish — a platformer without these reads as
@@ -84,6 +121,26 @@
     ],
     baseMult: 1,
 
+    /*
+     * Upgrades are attached to the LANES at a split, not offered on a menu.
+     * Choosing a lane already chooses a route; now it chooses a perk too, so
+     * the wanted upgrade is sometimes sitting in the dangerous lane. No pause,
+     * no second screen, and one decision instead of two.
+     *
+     * They also shore up the genre floor: the requirement is converting
+     * resources "into something more useful through crafting, refining or
+     * upgrading", and consumable spends alone made that thin.
+     */
+    upgrades: [
+      { id: 'doubleJump', name: 'DOUBLE JUMP', blurb: 'one more jump in the air' },
+      { id: 'magnet',     name: 'MAGNET',      blurb: 'pull energy from nearby lanes' },
+      { id: 'longJump',   name: 'LONG JUMP',   blurb: 'jumps skip one more floor' },
+      { id: 'spareShield',name: 'SPARE SHIELD',blurb: 'a free shield at every split' },
+      { id: 'anchor',     name: 'ANCHOR',      blurb: 'slips cost far less height' },
+    ],
+    anchorRelief: .4,        // floors shaved off a slip per stack
+    minSlip: .3,
+
     hintDwell: 3.2,          // seconds a coaching line holds before a calmer one takes the slot
 
     // Energy is the score AND the survival budget. One resource, three spends.
@@ -95,7 +152,7 @@
     cost: { shield: 6, surge: 8, grapple: 10 },
     surgePush: 1.5,          // floors the storm is knocked back — exactly one slip
     grappleClimb: 2,         // floors gained instantly: energy bought as height
-    summitBonus: 25,
+    summitBonus: 50,
 
     // Per-lane character. The danger lane is where the score is.
     routes: {
@@ -108,20 +165,91 @@
   const colors = {
     sky: 0x121a2e, tower: 0x2b3350, towerEdge: 0x3d4870, ledge: 0x55628f,
     climber: 0xffd9a0, suit: 0x3f7fd6, pack: 0x2b3350,
-    energy: 0x66e0c8, hazard: 0xe0556b, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0xffb45c,
+    energy: 0x66e0c8, hazard: 0xe0556b, splitPlate: 0x4a5a8f, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0xffb45c,
     safe: 0x63c47a, danger: 0xe0556b, unknown: 0xc79bf0, beacon: 0xffe066,
   };
 
   const ui = Object.fromEntries([
-    'game', 'floor', 'energy', 'best', 'stormGap', 'multiplier', 'feed', 'routeHint',
+    'game', 'floor', 'energy', 'health', 'best', 'stormGap', 'multiplier', 'feed', 'routeHint',
     'buyShield', 'buySurge', 'buyGrapple', 'costShield', 'costSurge', 'costGrapple',
     'startModal', 'modalButton', 'modalTitle', 'modalCopy', 'modalIcon', 'modalKicker',
-    'reset', 'summitGoal',
+    'reset', 'mute', 'summitGoal', 'splitChoice', 'pick0', 'pick1', 'pick2',
+    'climbFill', 'climbNext',
   ].map(id => [id, document.getElementById(id)]));
 
   const BEST_KEY = 'lastascent.best';
   const loadBest = () => { try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; } };
   const saveBest = n => { try { localStorage.setItem(BEST_KEY, String(n)); } catch { /* not worth a crash */ } };
+
+  /*
+   * Sound, synthesised at runtime. Not a single audio file: every asset would
+   * have to ship inside the zip and be referenced relatively, and a bundled
+   * sample buys nothing a two-oscillator blip does not. This costs zero bytes
+   * and makes zero requests, which is the rule that matters most.
+   *
+   * The context is created on the first click, because browsers refuse to
+   * start audio before a gesture.
+   */
+  let audio = null, muted = false;
+
+  function initAudio() {
+    if (audio) return;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audio = new Ctx();
+  }
+
+  function tone({ freq, to = freq, dur = .12, type = 'sine', gain = .18, delay = 0 }) {
+    if (!audio || muted) return;
+    const t = audio.currentTime + delay;
+    const osc = audio.createOscillator();
+    const vol = audio.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if (to !== freq) osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
+    vol.gain.setValueAtTime(0, t);
+    vol.gain.linearRampToValueAtTime(gain, t + .008);      // a click without an attack
+    vol.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    osc.connect(vol).connect(audio.destination);
+    osc.start(t);
+    osc.stop(t + dur + .02);
+  }
+
+  function noise({ dur = .18, gain = .2, freq = 900 }) {
+    if (!audio || muted) return;
+    const t = audio.currentTime;
+    const frames = Math.floor(audio.sampleRate * dur);
+    const buf = audio.createBuffer(1, frames, audio.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < frames; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+    const src = audio.createBufferSource();
+    src.buffer = buf;
+    const filter = audio.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(freq, t);
+    const vol = audio.createGain();
+    vol.gain.setValueAtTime(gain, t);
+    vol.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    src.connect(filter).connect(vol).connect(audio.destination);
+    src.start(t);
+  }
+
+  /* One voice per event, and the pickup is pitched by the risk multiplier so
+   * the ear learns the band before the eye reads the number. */
+  function sound(kind, mult = 1) {
+    if (!audio || muted) return;
+    if (kind === 'pickup') {
+      const base = mult >= 4 ? 880 : mult >= 2 ? 700 : 560;
+      tone({ freq: base, to: base * 1.5, dur: .1, type: 'triangle', gain: .13 });
+      if (mult >= 2) tone({ freq: base * 2, to: base * 3, dur: .09, type: 'sine', gain: .07, delay: .04 });
+    }
+    if (kind === 'slip') { noise({ dur: .3, gain: .22, freq: 420 }); tone({ freq: 200, to: 70, dur: .3, type: 'sawtooth', gain: .14 }); }
+    if (kind === 'jump') tone({ freq: 320, to: 620, dur: .13, type: 'square', gain: .07 });
+    if (kind === 'spend') tone({ freq: 500, to: 760, dur: .1, type: 'square', gain: .1 });
+    if (kind === 'upgrade') [0, .07, .14].forEach((d, i) => tone({ freq: 520 * (1 + i * .26), dur: .16, type: 'triangle', gain: .12, delay: d }));
+    if (kind === 'summit') [0, .1, .2, .34].forEach((d, i) => tone({ freq: 440 * Math.pow(1.26, i), dur: .5, type: 'triangle', gain: .15, delay: d }));
+    if (kind === 'dead') { noise({ dur: .7, gain: .3, freq: 300 }); tone({ freq: 160, to: 40, dur: .8, type: 'sawtooth', gain: .18 }); }
+  }
 
   let renderer, scene, camera, world, climberMesh, climberLimbs, shieldMesh, stormMesh, lightning, clock = 0, last = 0;
   let shake = 0, flash = 0, lightningTimer = 1;
@@ -275,13 +403,41 @@
     while (game.generatedTo < game.floor + config.splitEvery * 2) {
       const routes = rollRoutes();
       game.sectionRoutes.set(game.generatedTo, routes);
+      game.sectionUpgrades.set(game.generatedTo, rollUpgrades());
       generateSection(game.generatedTo, routes);
+      markSplit(game.generatedTo);
       game.generatedTo += config.splitEvery;
     }
   }
 
   const sectionStart = f => Math.floor(f / config.splitEvery) * config.splitEvery;
   const routesAt = f => game.sectionRoutes.get(sectionStart(f)) || game.sectionRoutes.get(0);
+  const upgradesAt = f => game.sectionUpgrades.get(sectionStart(f)) || game.sectionUpgrades.get(0);
+
+  /* Three different upgrades per split, so the choice is always between three
+   * real things rather than the same perk in three lanes. */
+  function rollUpgrades() {
+    const pool = config.upgrades.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(game.rand() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool.slice(0, config.lanes);
+  }
+
+  /* A band across the tower at each split with each lane's perk named on it.
+   * The choice has to be visible before it is made, or it is not a choice. */
+  function markSplit(floor) {
+    if (floor === 0) return;
+    const ups = game.sectionUpgrades.get(floor);
+    for (let lane = 0; lane < config.lanes; lane++) {
+      const plate = mesh(new T.BoxGeometry(config.laneWidth * .86, .5, .1),
+        mat(colors.splitPlate, .5), game.props, laneX(lane), floor - .35, .35);
+      plate.material.emissive = new T.Color(colors.splitPlate);
+      plate.material.emissiveIntensity = .35;
+      game.splitLabels.push({ mesh: plate, floor, lane, upgrade: ups[lane] });
+    }
+  }
 
   function generateSection(fromFloor, routeByLane) {
     for (let f = fromFloor; f < fromFloor + config.splitEvery; f++) {
@@ -365,7 +521,7 @@
 
     game = {
       rand: rng(seed ?? ((Date.now() ^ (Math.random() * 1e9)) >>> 0)),
-      props, spins: [],
+      props, spins: [], splitLabels: [],
       cells: new Map(),
       meshes: new Map(),   // cell key -> mesh, so a collected fragment can be removed
       popping: [],         // meshes mid-pickup animation
@@ -375,14 +531,19 @@
       energy: 0,
       storm: config.stormStart,
       stormFraction: config.stormFraction,
+      health: config.health,
+      combo: 0, comboAt: 0,   // consecutive hits, and the floor of the last one
       airborne: 0,         // seconds left in the current jump arc
       jumpSpan: 1,         // how long that arc was, so it can be drawn
       peak: 0,             // highest floor reached, which is what a slip takes back
       coyote: 0, buffered: 0,
       shield: false,
       running: false, paused: false,
-      over: null, banked: 0, newBest: false,
-      sectionRoutes: new Map(), generatedTo: 0, nextSplit: config.splitEvery,
+      over: null, banked: 0, newBest: false, milestone: 0,
+      sectionRoutes: new Map(), sectionUpgrades: new Map(),
+      generatedTo: 0, nextSplit: config.splitEvery,
+      upgrades: Object.fromEntries(config.upgrades.map(u => [u.id, 0])),
+      airJumps: 0,          // air jumps left in the current jump, from DOUBLE JUMP
       collected: 0, spent: 0, slips: 0, skipped: 0,
       hint: null, hintRank: -1, hintUntil: 0, hintTime: 0,
       taughtJump: false, taughtSwipe: false,
@@ -409,19 +570,33 @@
 
   /* Long enough to clear the next floor line whenever it is pressed. */
   const jumpDuration = () => {
-    const toNext = (Math.floor(game.floor) + 1 - game.floor) / climbSpeed();
+    // LONG JUMP carries the arc over additional floor lines.
+    const spanFloors = 1 + game.upgrades.longJump;
+    const toNext = (Math.floor(game.floor) + spanFloors - game.floor) / climbSpeed();
     return toNext + config.jumpClear;
   };
 
   function jump() {
     if (!game.running) return false;
-    // Buffered: pressing just before you land still counts, which is most of
-    // what "responsive" means in a platformer.
-    if (game.airborne > 0 && game.coyote <= 0) { game.buffered = config.buffer; return false; }
+    if (game.airborne > 0 && game.coyote <= 0) {
+      // DOUBLE JUMP spends an air jump; otherwise the press is buffered for
+      // landing, which is most of what "responsive" means in a platformer.
+      if (game.airJumps > 0) {
+        game.airJumps--;
+        game.airborne = jumpDuration();
+        game.jumpSpan = game.airborne;
+        sound('jump');
+        return true;
+      }
+      game.buffered = config.buffer;
+      return false;
+    }
     game.airborne = jumpDuration();
-    game.jumpSpan = game.airborne;      // kept so the arc can be drawn over its real length
+    game.jumpSpan = game.airborne;
+    game.airJumps = game.upgrades.doubleJump;
     game.coyote = 0;
     game.buffered = 0;
+    sound('jump');
     return true;
   }
 
@@ -443,10 +618,25 @@
   function crossFloor(f) {
     if (game.airborne > 0) { game.skipped++; return; }
 
+    // MAGNET sweeps the neighbouring lanes on the way past.
+    for (let r = 1; r <= game.upgrades.magnet; r++) {
+      for (const lane of [game.lane - r, game.lane + r]) {
+        if (lane < 0 || lane >= config.lanes) continue;
+        if (game.cells.get(`${lane}:${f}`) === 'energy') collect(lane, f);
+      }
+    }
+
     const kind = game.cells.get(`${game.lane}:${f}`);
 
-    if (kind === 'energy') {
-      const key = `${game.lane}:${f}`;
+    if (kind === 'energy') { collect(game.lane, f); return; }
+
+    if (kind === 'gap') return slip('SLIPPED');
+    if (kind === 'hazard') return slip('HIT');
+  }
+
+  function collect(lane, f) {
+    {
+      const key = `${lane}:${f}`;
       game.cells.delete(key);
       /* Remove the mesh. It used to stay on screen after being collected, so
        * picking a fragment up looked like nothing had happened at all — the
@@ -462,14 +652,11 @@
       game.energy += band.mult;
       game.collected += band.mult;
       showFeed(band.mult > 1 ? `+${band.mult}  ${band.label}` : '+1');
+      sound('pickup', band.mult);
       ui.energy.classList.remove('pulse');
       void ui.energy.offsetWidth;
       ui.energy.classList.add('pulse');
-      return;
     }
-
-    if (kind === 'gap') return slip('SLIPPED');
-    if (kind === 'hazard') return slip('HIT');
   }
 
   /* Slipping is the only punishment in the game, and it is paid in the one
@@ -486,13 +673,29 @@
     if (game.shield) {
       game.shield = false;
       showFeed('SHIELD HELD');
+      sound('spend');
       return;
     }
-    game.floor = Math.max(game.storm, game.floor - config.slip);
+
+    // A streak of hits costs more each time, and clean climbing clears it.
+    if (game.floor - game.comboAt > config.comboWindow) game.combo = 0;
+    game.combo++;
+    game.comboAt = game.floor;
+
+    const base = Math.max(config.minSlip, config.slip - game.upgrades.anchor * config.anchorRelief);
+    const cost = Math.min(config.maxSlip, base * (1 + (game.combo - 1) * config.comboGrowth));
+
+    game.floor = Math.max(game.storm, game.floor - cost);
+    game.health--;
     game.slips++;
-    shake = 1.6;
+    shake = 1.6 + game.combo * .3;
+    sound('slip');
     flash = 1;                       // the climber flares red and drops
-    hurt(`${reason}  −${config.slip} FLOORS`);
+    hurt(`${reason}  −${cost.toFixed(1)}${game.combo > 1 ? `  ×${game.combo} STREAK` : ''}`);
+
+    if (game.health <= 0) {
+      end('fell', 'YOU FELL', 'Three hits and the tower had you.');
+    }
   }
 
   function tick(dt) {
@@ -527,9 +730,29 @@
     if (game.running && game.storm >= game.floor) {
       end('storm', 'THE STORM TOOK YOU', 'It was always going to be faster than you.');
     }
+    if (game.running) checkMilestone();
     if (game.running && game.floor >= config.summit) summit();
 
     sync();
+  }
+
+  /* A milestone records the score rather than taking the wallet, so it costs
+   * the player nothing and still makes a deep run worth something. */
+  function checkMilestone() {
+    const reached = Math.floor(game.floor / config.milestoneEvery);
+    if (reached <= game.milestone || reached === 0) return;
+    game.milestone = reached;
+    game.banked = Math.max(game.banked, game.energy);
+    // A milestone patches you up. This is the only way to regain health, which
+    // is what makes reaching one a relief rather than only a number.
+    const healed = game.health < config.health;
+    game.health = Math.min(config.health, game.health + config.healOnMilestone);
+    game.combo = 0;
+    const title = config.titles[Math.min(reached - 1, config.titles.length - 1)];
+    showFeed(`FLOOR ${reached * config.milestoneEvery} · ${title}${healed ? '  +1 LIFE' : ''}`);
+    sound('upgrade');
+    ui.best.parentElement.classList.add('flash');
+    setTimeout(() => ui.best.parentElement.classList.remove('flash'), 700);
   }
 
   /* Crossing into a new section is the moment the choice locks in: the lane
@@ -537,7 +760,18 @@
   function reachSplit(f) {
     game.nextSplit = sectionStart(f) + config.splitEvery;
     game.stormFraction += config.stormRampAdd;
-    showFeed(`${routesAt(f)[game.lane]} ROUTE`);
+
+    /* The lane you happen to be in is the route AND the upgrade. One decision,
+     * made with the same swipe as everything else. */
+    const perk = upgradesAt(f)[game.lane];
+    if (perk) {
+      game.upgrades[perk.id]++;
+      showFeed(`${perk.name}  ·  ${routesAt(f)[game.lane]} ROUTE`);
+      sound('upgrade');
+    } else {
+      showFeed(`${routesAt(f)[game.lane]} ROUTE`);
+    }
+    if (game.upgrades.spareShield && !game.shield) game.shield = true;
   }
 
   // ── spending: the decision the game is built on ────────────────────────────
@@ -554,6 +788,7 @@
     if (!canAfford(kind)) return false;
     game.energy -= config.cost[kind];
     game.spent += config.cost[kind];
+    sound('spend');
     if (kind === 'shield') { game.shield = true; showFeed('SHIELDED'); }
     if (kind === 'surge') { game.storm -= config.surgePush; showFeed('SURGE'); }
     if (kind === 'grapple') { game.floor += config.grappleClimb; showFeed('GRAPPLE'); }
@@ -564,20 +799,22 @@
   // ── ending ─────────────────────────────────────────────────────────────────
 
   function summit() {
-    game.banked = game.energy + config.summitBonus;
     const g = new T.Group();
     g.position.set(laneX(game.lane), config.summit + 1, .5);
     game.props.add(g);
     const b = mesh(new T.SphereGeometry(.5, 12, 10), mat(colors.beacon, .3), g);
     b.material.emissive = new T.Color(colors.beacon);
     b.material.emissiveIntensity = .9;
+    sound('summit');
     end('summit', 'ESCAPED', `Beacon lit with ${game.energy} energy still in hand, plus a ${config.summitBonus} summit bonus.`);
   }
 
   function end(kind, title, copy) {   // eslint-disable-line no-unused-vars
     game.running = false;
     game.over = kind;
-    if (kind !== 'summit') game.banked = 0;   // dying banks nothing at all
+    /* Dying keeps the last milestone snapshot and loses everything gathered
+     * since it. Reaching the beacon banks the lot, plus the bonus. */
+    if (kind === 'summit') game.banked = game.energy + config.summitBonus;
 
     const previous = loadBest();
     game.newBest = game.banked > previous;
@@ -589,7 +826,8 @@
         : 'Reach the summit and the energy in hand is yours to keep.';
 
     ui.modalIcon.textContent = kind === 'summit' ? '🛰️' : kind === 'storm' ? '🌩️' : '💀';
-    ui.modalKicker.textContent = `FLOOR ${Math.floor(game.floor)} · ${game.collected} COLLECTED · ${game.slips} SLIPS`;
+    const rank = game.milestone ? config.titles[Math.min(game.milestone - 1, config.titles.length - 1)] : 'FELL SHORT';
+    ui.modalKicker.textContent = `FLOOR ${Math.floor(game.floor)} OF ${config.summit} · ${rank}`;
     ui.modalTitle.textContent = game.banked ? `BANKED ${game.banked}` : title;
     ui.modalCopy.textContent = `${copy} ${near}`;
     ui.modalButton.textContent = 'CLIMB AGAIN';
@@ -615,10 +853,20 @@
 
   function sync() {
     if (!game) return;
-    ui.floor.textContent = Math.max(0, Math.floor(game.floor));
+    const floorNow = Math.max(0, Math.floor(game.floor));
+    ui.floor.textContent = floorNow;
     ui.summitGoal.textContent = config.summit;
+
+    /* A bar toward 100 with the milestones ticked on it, so "how far to the
+     * top" and "how far to the next bank" are one glance rather than two. */
+    ui.climbFill.style.height = `${Math.min(100, floorNow / config.summit * 100)}%`;
+    const nextMs = (game.milestone + 1) * config.milestoneEvery;
+    ui.climbNext.textContent = floorNow >= config.summit ? 'SUMMIT'
+      : `${Math.max(0, nextMs - floorNow)} to bank`;
     ui.energy.textContent = game.energy;
     ui.best.textContent = Math.max(loadBest(), game.banked);
+    ui.health.textContent = '♥'.repeat(Math.max(0, game.health)) + '♡'.repeat(Math.max(0, config.health - game.health));
+    ui.health.className = `stat-value health${game.health <= 1 ? ' critical' : ''}`;
 
     const gap = game.floor - game.storm;
     const band = game.running ? riskBand() : { mult: 1, label: '' };
@@ -644,6 +892,21 @@
     }
     ui.buyShield.classList.toggle('active', game.shield);
 
+    /* Show the three perks while a split is approaching, and mark the one the
+     * climber is currently lined up to take. */
+    const toSplitNow = game.nextSplit - game.floor;
+    const showPicks = game.running && toSplitNow <= 3.2;
+    ui.splitChoice.hidden = !showPicks;
+    if (showPicks) {
+      const perks = upgradesAt(game.floor + config.splitEvery) || [];
+      for (let lane = 0; lane < config.lanes; lane++) {
+        const el = ui[`pick${lane}`];
+        el.querySelector('b').textContent = perks[lane]?.name || '';
+        el.querySelector('small').textContent = perks[lane]?.blurb || '';
+        el.classList.toggle('chosen', lane === game.lane);
+      }
+    }
+
     const [text, tone] = hint();
     ui.routeHint.textContent = text;
     ui.routeHint.className = `route-hint ${tone}`;
@@ -664,6 +927,8 @@
     const ahead = game.cells.get(`${game.lane}:${next}`);
     if (ahead === 'gap') { game.taughtJump = true; return [5, 'GAP AHEAD — TAP TO JUMP', 'danger']; }
     if (ahead === 'hazard') { game.taughtJump = true; return [5, 'SPIKES — TAP TO JUMP OR SWIPE AWAY', 'danger']; }
+
+    if (game.health === 1) return [5, 'ONE LIFE LEFT — reach the next milestone to patch up', 'danger'];
 
     const band = riskBand();
     if (band.mult >= 4) return [4, `IN THE TEETH · energy pays ×${band.mult}`, 'danger'];
@@ -815,6 +1080,7 @@
   }
 
   function start(seed) {
+    initAudio();                      // browsers require a gesture; this is one
     ui.reset.classList.remove('arm');
     ui.reset.textContent = '↺';
     reset(typeof seed === 'number' ? seed : undefined);
@@ -835,6 +1101,12 @@
   function bind() {
     ui.modalButton.addEventListener('click', () => start());
     ui.reset.addEventListener('click', askReset);
+    ui.mute.addEventListener('click', () => {
+      muted = !muted;
+      ui.mute.textContent = muted ? '🔇' : '🔊';
+      ui.mute.classList.toggle('off', muted);
+      if (!muted) sound('spend');
+    });
     ui.buyShield.addEventListener('click', () => buy('shield'));
     ui.buySurge.addEventListener('click', () => buy('surge'));
     ui.buyGrapple.addEventListener('click', () => buy('grapple'));
@@ -877,16 +1149,20 @@
       running: game?.running, over: game?.over,
       floor: game?.floor, floorInt: Math.floor(game?.floor ?? 0),
       lane: game?.lane, laneVisual: game?.laneVisual,
-      energy: game?.energy, shield: game?.shield,
+      energy: game?.energy, shield: game?.shield, health: game?.health, combo: game?.combo,
+      maxHealth: config.health,
       storm: game?.storm, stormGap: (game?.floor ?? 0) - (game?.storm ?? 0),
       stormFraction: game?.stormFraction, climbSpeed: game ? climbSpeed() : 0, peak: game?.peak,
       multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint,
+      upgrades: game && { ...game.upgrades }, airJumps: game?.airJumps,
+      upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered,
       routes: game && routesAt(game.floor), routesAhead: game && routesAt(game.floor + config.splitEvery),
       nextSplit: game?.nextSplit, generatedTo: game?.generatedTo,
       collected: game?.collected, spent: game?.spent, slips: game?.slips, skipped: game?.skipped,
       banked: game?.banked, newBest: game?.newBest, best: loadBest(),
       summit: config.summit, cost: config.cost, slipFloors: config.slip,
+      milestone: game?.milestone,
     }),
     start, reset, buy, jump, moveLane,
     cellAt: (lane, floor) => game.cells.get(`${lane}:${floor}`) ?? null,
@@ -899,6 +1175,7 @@
     /* Reseeding regenerates: the sections already built came from the old
      * stream, so seeding without a reset changes almost nothing. */
     seed: n => { const was = game.running; reset(n); game.running = was; },
+    mute: on => { muted = !!on; },
     clearBest: () => saveBest(0),
     pause: on => { game.paused = !!on; },
     step: (dt, times = 1) => { for (let i = 0; i < times && game.running; i++) tick(dt); },

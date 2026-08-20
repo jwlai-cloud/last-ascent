@@ -14,12 +14,18 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 .stat{display:grid;gap:.1em;min-width:2.2em}
 .stat small{color:#7f8cb5;font-size:.47em;font-weight:900;letter-spacing:.13em}
 .stat strong{font-size:1.15em;line-height:1;font-variant-numeric:tabular-nums}
-.stat em{display:none}
+.stat em{font-style:normal;font-size:.5em;color:#7f8cb5;font-weight:900}
+.stat.floor{min-width:3.2em}
+.stat.floor .row{display:flex;align-items:baseline;gap:.08em}
 .stat.energy strong{color:var(--energy)}
+.health{letter-spacing:.02em;color:var(--danger)}
+.health.critical{animation:throb .6s ease-in-out infinite}
 .stat.best{margin-left:auto}
 .stat.best strong{color:var(--beacon)}
+.stat.flash strong{animation:bump .6s ease-out}
 @keyframes throb{50%{opacity:.35}}
 .reset{padding:.3em .42em;border:1px solid #3a456b;border-radius:.4em;background:transparent;color:#7f8cb5;font-size:.8em;line-height:1}
+.reset.off{opacity:.45}
 .reset.arm{border-color:var(--danger);color:var(--danger);font-size:.5em;font-weight:1000;letter-spacing:.08em}
 
 .arena{position:relative;min-height:0;overflow:hidden;background:#121a2e;touch-action:none;user-select:none}
@@ -27,6 +33,15 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 /* Damage has to register inside a second. */
 .arena.hurt::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at center,rgba(224,85,107,0) 40%,rgba(224,85,107,.6) 100%);animation:hurtflash .5s ease-out both}
 @keyframes hurtflash{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
+
+/* The climb meter runs up the left edge, because the thing it measures is
+   vertical and the eye should not have to translate. */
+.climb-meter{position:absolute;left:.4em;top:2.4em;bottom:2.4em;display:flex;flex-direction:column;align-items:center;gap:.25em;pointer-events:none}
+.climb-track{position:relative;flex:1;width:.32em;border-radius:.16em;background:rgba(10,15,28,.7);border:1px solid #3a456b;overflow:hidden;display:flex;align-items:flex-end}
+.climb-track i{display:block;width:100%;background:linear-gradient(to top,var(--energy),var(--beacon));border-radius:.16em;transition:height .2s linear}
+.climb-track .tick{position:absolute;left:0;right:0;height:1px;background:rgba(255,255,255,.35)}
+.tick.t20{bottom:20%}.tick.t40{bottom:40%}.tick.t60{bottom:60%}.tick.t80{bottom:80%}
+.climb-meter small{writing-mode:vertical-rl;font-size:.36em;font-weight:900;letter-spacing:.1em;color:#8e9cc4}
 
 .storm-pill{position:absolute;left:50%;bottom:.6em;transform:translateX(-50%);display:flex;align-items:center;gap:.3em;padding:.32em .5em;border-radius:.4em;background:rgba(10,15,28,.8);border:1px solid #3a456b;font-size:.47em;font-weight:950;letter-spacing:.1em;color:#9fb0d8;white-space:nowrap;pointer-events:none}
 .storm-pill b{color:var(--energy);font-size:1.5em;font-variant-numeric:tabular-nums}
@@ -50,6 +65,15 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 @keyframes warn{50%{transform:translateX(-50%) scale(1.06)}}
 .stat.energy strong.pulse{animation:bump .35s ease-out}
 @keyframes bump{0%{transform:scale(1);color:#fff}40%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
+
+/* Three columns matching the three lanes, so the label is directly above the
+   lane that grants it. */
+.split-choice{position:absolute;left:0;right:0;top:2.6em;display:grid;grid-template-columns:repeat(3,1fr);gap:.2em;padding:0 .5em;pointer-events:none}
+.pick{display:grid;gap:.05em;justify-items:center;padding:.3em .15em;border-radius:.35em;background:rgba(10,15,28,.85);border:1px solid #3a456b;text-align:center}
+.pick b{font-size:.44em;font-weight:1000;letter-spacing:.04em;color:#cbd7f5;line-height:1.15}
+.pick small{font-size:.36em;color:#8e9cc4;line-height:1.15}
+.pick.chosen{border-color:var(--energy);background:rgba(20,60,54,.9)}
+.pick.chosen b{color:var(--energy)}
 
 .feed{position:absolute;top:26%;left:50%;width:88%;transform:translateX(-50%);text-align:center;font-size:1.35em;font-weight:1000;letter-spacing:-.04em;text-shadow:0 3px 12px rgba(0,0,0,.8);pointer-events:none;min-height:1.6em}
 .feed.show{animation:pop .9s ease both}

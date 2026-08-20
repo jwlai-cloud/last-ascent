@@ -10,14 +10,22 @@
   <body>
     <main class="game-shell" aria-label="The Last Ascent climbing game">
       <header class="hud">
-        <div class="stat"><small>FLOOR</small><strong id="floor">0</strong><em>/<span id="summitGoal">20</span></em></div>
+        <div class="stat floor"><small>FLOOR</small><span class="row"><strong id="floor">0</strong><em>/<span id="summitGoal">100</span></em></span></div>
         <div class="stat energy"><small>ENERGY</small><strong id="energy">0</strong></div>
+        <div class="stat"><small>LIVES</small><strong id="health" class="stat-value health">♥♥♥</strong></div>
         <div class="stat best"><small>BEST</small><strong id="best">0</strong></div>
+        <button class="reset" id="mute" type="button" aria-label="Mute sound">🔊</button>
         <button class="reset" id="reset" type="button" aria-label="Restart the run">↺</button>
       </header>
 
       <section class="arena" id="arena" aria-label="The tower">
         <canvas id="game" aria-label="A climber ascending a tower above a rising storm."></canvas>
+
+        <!-- How far to the top, and how far to the next bank, in one glance. -->
+        <div class="climb-meter" aria-hidden="true">
+          <div class="climb-track"><i id="climbFill"></i><span class="tick t20"></span><span class="tick t40"></span><span class="tick t60"></span><span class="tick t80"></span></div>
+          <small id="climbNext">20 to bank</small>
+        </div>
 
         <!-- The storm gap is the only number that says how close you are to
              losing, so it sits on screen permanently. -->
@@ -25,6 +33,15 @@
              same widget: energy pays more the closer the storm is. -->
         <div class="storm-pill" aria-live="polite"><span>STORM</span><b id="stormGap">4.0</b><span>below</span><i class="multiplier" id="multiplier">×1</i></div>
         <div class="route-hint" id="routeHint">Swipe to change lane · tap to jump</div>
+
+        <!-- The upgrade sitting in each lane at the next split. Choosing a lane
+             chooses the perk, so the perks have to be readable before the
+             split arrives or the choice does not exist. -->
+        <div class="split-choice" id="splitChoice" hidden>
+          <div class="pick" id="pick0"><b></b><small></small></div>
+          <div class="pick" id="pick1"><b></b><small></small></div>
+          <div class="pick" id="pick2"><b></b><small></small></div>
+        </div>
         <div class="feed" id="feed" aria-live="polite"></div>
       </section>
 
@@ -50,7 +67,7 @@
           <div class="modal-icon" id="modalIcon">🌩️</div>
           <p id="modalKicker">SURVIVAL &amp; RESOURCE MANAGEMENT</p>
           <h2 id="modalTitle">The Last Ascent</h2>
-          <p id="modalCopy">You cannot stop climbing and the storm never stops rising. <b>Swipe</b> to change lane, <b>tap</b> to jump — a jump <b>skips</b> the whole floor, spikes and energy alike. Collect energy — it is your score <b>and</b> your only fuel, so every point spent surviving comes off the run. Hazards make you <b>slip</b>. And energy is worth <b>more the closer the storm is</b> — ×2 within three floors, ×4 within one and a half. Climb too fast and you outrun your own pay. Every four floors the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>. Reach floor 20 and keep what you did not spend.</p>
+          <p id="modalCopy">You cannot stop climbing and the storm never stops rising. <b>Swipe</b> to change lane, <b>tap</b> to jump — a jump <b>skips</b> the whole floor, spikes and energy alike. Collect energy — it is your score <b>and</b> your only fuel, so every point spent surviving comes off the run. Hazards make you <b>slip</b>. And energy is worth <b>more the closer the storm is</b> — ×2 within three floors, ×4 within one and a half. Climb too fast and you outrun your own pay. Every four floors the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>. You have <b>three lives</b>; every twenty floors banks your score and patches one back. Reach floor <b>100</b> and keep everything — almost nobody gets there.</p>
           <button id="modalButton" type="button">START CLIMBING</button>
         </div>
       </section>
