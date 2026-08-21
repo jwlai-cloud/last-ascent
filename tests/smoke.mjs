@@ -676,6 +676,66 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   await run(() => window.ascent.setFlip(0.55, false));
 }
 
+/*
+ * Supply caches. The point is not the payout — it is that the boost pushes the
+ * player toward the storm rather than away from it, so a windfall deepens the
+ * game's tension instead of relieving it.
+ */
+{
+  await fresh();
+  const cache = await run(() => {
+    const a = window.ascent;
+    const st = a.getState();
+    a.setStorm(st.floor - 5);                 // far from the storm: base rate is x1
+    const f0 = Math.floor(st.floor);
+    // Clear the way, or an immediate hazard rightly outranks the cache line.
+    for (let f = f0 + 1; f <= f0 + 4; f++) for (const l of [0, 1, 2]) a.setCell(l, f, null);
+    a.setCell(st.lane, f0 + 1, 'cache');
+    const baseMult = a.getState().multiplier;
+    a.step(0.05, 60);
+    const lit = a.getState();
+    // with the cache burning, the same distance now pays double
+    return { baseMult, burning: lit.cache, mult: lit.multiplier, caches: lit.caches, hint: lit.hint };
+  });
+  check('a cache starts burning when collected', cache.burning > 0 && cache.caches === 1,
+    `${cache.burning?.toFixed(1)}s left, ${cache.caches} found`);
+  check('a burning cache doubles what the same distance pays',
+    cache.mult === cache.baseMult * 2, `x${cache.baseMult} -> x${cache.mult}`);
+  check('the hint sends you at the storm while it burns', /CACHE BURNING/.test(cache.hint || ''), cache.hint);
+
+  const reach = await run(() => {
+    const a = window.ascent;
+    const st = a.getState();
+    const f = Math.floor(st.floor) + 1;
+    a.setCell(st.lane, f, null);
+    a.setCell(st.lane === 0 ? 1 : st.lane - 1, f, 'energy');   // an adjacent lane only
+    const before = a.getState().energy;
+    a.step(0.05, 60);
+    return a.getState().energy - before;
+  });
+  check('a burning cache reaches the next lane without the magnet perk', reach > 0,
+    `gained ${reach} from the adjacent lane`);
+
+  const expired = await run(() => {
+    const a = window.ascent;
+    a.step(0.05, 220);                        // burn past eight seconds
+    return { cache: a.getState().cache, mult: a.getState().multiplier };
+  });
+  check('the boost expires', expired.cache === 0, `${expired.cache}s left`);
+}
+
+/* Gold means valuable, and nothing else may be gold. A lit window read as a
+ * pickup during play, which is the same class of mistake as the climber and the
+ * hazards both being capsules. */
+{
+  const golds = await run(() => {
+    const hex = n => '#' + n.toString(16).padStart(6, '0');
+    return { cache: hex(0xffc23d), window: hex(0x5f7fc4) };
+  });
+  check('the wall lights are not gold', golds.window !== golds.cache,
+    `cache ${golds.cache}, window ${golds.window}`);
+}
+
 check('no runtime errors', errors.length === 0, errors.join(' | '));
 
 await page.screenshot({ path: 'tests/last-run.png' });

@@ -1,4 +1,4 @@
-:root{--ink:#e8ecff;--deep:#0a0f1c;--panel:#151d33;--edge:#26304f;--energy:#66e0c8;--danger:#e0556b;--safe:#63c47a;--unknown:#c79bf0;--beacon:#ffe066}
+:root{--ink:#e8ecff;--deep:#0a0f1c;--panel:#151d33;--edge:#26304f;--energy:#66e0c8;--danger:#e0556b;--safe:#63c47a;--unknown:#c79bf0;--beacon:#ffe066;--cache:#ffc23d}
 *{box-sizing:border-box}
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#05080f;color:var(--ink);font-family:Inter,Avenir,"Helvetica Neue",Arial,sans-serif;overscroll-behavior:none}
 body{display:grid;place-items:center}
@@ -77,6 +77,9 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 .pick.chosen b{color:var(--energy)}
 
 /* The turn warning owns the middle of the screen while it counts down. */
+.cache-chip{position:absolute;top:6.2em;left:50%;transform:translateX(-50%);padding:.3em .55em;border-radius:.35em;background:var(--cache);color:#2a1d02;font-size:.5em;font-weight:1000;letter-spacing:.08em;white-space:nowrap;pointer-events:none;animation:turnpulse .5s ease-in-out infinite}
+.route-hint.cache{color:#2a1d02;background:var(--cache)}
+
 .turn-warning{position:absolute;top:44%;left:50%;transform:translateX(-50%);padding:.4em .7em;border-radius:.4em;background:var(--beacon);color:#2a1608;font-size:.72em;font-weight:1000;letter-spacing:.08em;white-space:nowrap;pointer-events:none;animation:turnpulse .4s ease-in-out infinite}
 @keyframes turnpulse{0%,100%{transform:translateX(-50%) scale(1);opacity:1}50%{transform:translateX(-50%) scale(1.08);opacity:.72}}
 /* And the whole arena takes on the warning colour, so it cannot be missed by

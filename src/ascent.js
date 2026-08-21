@@ -155,6 +155,20 @@
       { id: 'spareShield',name: 'SPARE SHIELD',blurb: 'a free shield at every split', max: 2 },
       { id: 'anchor',     name: 'ANCHOR',      blurb: 'slips cost far less height', max: 3 },
     ],
+    /*
+     * A supply cache: rare, gold, and worth going out of your way for.
+     *
+     * Perks only arrived at splits, so the six floors between them had no
+     * reward variance beyond energy. A cache gives a reason to break route
+     * mid-section, and what it grants doubles down on the game's own tension
+     * rather than sidestepping it — while it burns, energy pays double AND
+     * pulls from the next lane, so the right move is to dive toward the storm
+     * and sweep. It is loudest exactly where it is most dangerous.
+     */
+    cacheChance: .05,        // per cell, and only on the richer routes
+    cacheTime: 8,            // seconds it burns
+    cacheMult: 2,            // multiplies the risk band while it lasts
+
     anchorRelief: .4,        // floors shaved off a slip per stack
     minSlip: .3,
 
@@ -205,7 +219,7 @@
   const colors = {
     sky: 0x121a2e, tower: 0x2b3350, towerEdge: 0x3d4870, ledge: 0x55628f,
     climber: 0xffd9a0, suit: 0x3f7fd6, pack: 0x2b3350,
-    energy: 0x66e0c8, hazard: 0xe0556b, splitPlate: 0x4a5a8f, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0xffb45c, city: 0x0d1424,
+    energy: 0x66e0c8, hazard: 0xe0556b, splitPlate: 0x4a5a8f, cache: 0xffc23d, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0x5f7fc4, city: 0x0d1424,
     safe: 0x63c47a, danger: 0xe0556b, unknown: 0xc79bf0, beacon: 0xffe066,
   };
 
@@ -214,7 +228,7 @@
     'buyShield', 'buySurge', 'buyGrapple', 'costShield', 'costSurge', 'costGrapple',
     'startModal', 'modalButton', 'modalTitle', 'modalCopy', 'modalIcon', 'modalKicker',
     'reset', 'mute', 'summitGoal', 'splitChoice', 'pick0', 'pick1', 'pick2',
-    'climbFill', 'climbNext', 'turnWarn',
+    'climbFill', 'climbNext', 'turnWarn', 'cacheChip',
   ].map(id => [id, document.getElementById(id)]));
 
   const BEST_KEY = 'lastascent.best';
@@ -288,6 +302,7 @@
     if (kind === 'spend') tone({ freq: 500, to: 760, dur: .1, type: 'square', gain: .1 });
     if (kind === 'upgrade') [0, .07, .14].forEach((d, i) => tone({ freq: 520 * (1 + i * .26), dur: .16, type: 'triangle', gain: .12, delay: d }));
     if (kind === 'summit') [0, .1, .2, .34].forEach((d, i) => tone({ freq: 440 * Math.pow(1.26, i), dur: .5, type: 'triangle', gain: .15, delay: d }));
+    if (kind === 'cache') [0, .08, .16, .28].forEach((d, i) => tone({ freq: 600 * Math.pow(1.33, i), dur: .3, type: 'triangle', gain: .14, delay: d }));
     if (kind === 'warn') [0, .18, .36].forEach(d => tone({ freq: 300, to: 300, dur: .1, type: 'square', gain: .09, delay: d }));
     if (kind === 'turn') tone({ freq: 220, to: 520, dur: .8, type: 'sawtooth', gain: .1 });
     if (kind === 'dead') { noise({ dur: .7, gain: .3, freq: 300 }); tone({ freq: 160, to: 40, dur: .8, type: 'sawtooth', gain: .18 }); }
@@ -408,7 +423,7 @@
     const dark = mat(colors.window, .95);
     const lit = mat(colors.windowLit, .4);
     lit.emissive = new T.Color(colors.windowLit);
-    lit.emissiveIntensity = .5;
+    lit.emissiveIntensity = .28;
     for (let f = -2; f < 130; f++) {
       for (let lane = 0; lane < config.lanes; lane++) {
         if ((f * 7 + lane * 3) % 5 > 2) continue;
@@ -584,7 +599,10 @@
         let kind = null;
         if (roll < route.gap) kind = 'gap';
         else if (roll < route.gap + route.hazard) kind = 'hazard';
-        else if (roll < route.gap + route.hazard + route.energy) kind = 'energy';
+        else if (roll < route.gap + route.hazard + route.energy) {
+          // Caches only appear where the danger already is.
+          kind = route.hazard > .2 && game.rand() < config.cacheChance ? 'cache' : 'energy';
+        }
         if (kind) game.cells.set(`${lane}:${f}`, kind);
       }
       // A floor with no way through is a dead end, not difficulty. Always clear one.
@@ -639,6 +657,17 @@
           game.meshes.set(`${lane}:${f}`, e);
         }
 
+        if (kind === 'cache') {
+          const box = mesh(new T.BoxGeometry(.46, .42, .42), mat(colors.cache, .35), cell, 0, .5, .5);
+          box.material.emissive = new T.Color(colors.cache);
+          box.material.emissiveIntensity = .85;
+          box.rotation.y = .5;
+          box.castShadow = true;
+          box.userData.baseY = .5;
+          game.spins.push(box);
+          game.meshes.set(`${lane}:${f}`, box);
+        }
+
         if (kind === 'hazard') {
           /* Three spikes rather than one cone: a row of spikes is the most
            * universally understood "do not touch" shape there is. */
@@ -690,6 +719,7 @@
       stormFraction: config.stormFraction,
       health: config.health,
       mirrored: false,
+      cache: 0, caches: 0,   // seconds of supply-cache boost left, and how many found
       flipPhase: null,      // null | 'warn' | 'turn'
       flipTimer: 0, flipAngle: 0, flipFrom: 0, flipSwaps: false,
       combo: 0, comboAt: 0,   // consecutive hits, and the floor of the last one
@@ -783,17 +813,19 @@
     if (game.airborne > 0) { game.skipped++; return; }
 
     // MAGNET sweeps the neighbouring lanes on the way past.
-    const reach = Math.min(game.upgrades.magnet, config.lanes - 2);   // never every lane at once
+    // A burning cache lends the magnet's reach even without the perk.
+    const reach = Math.min(Math.max(game.upgrades.magnet, game.cache > 0 ? 1 : 0), config.lanes - 2);
     for (let r = 1; r <= reach; r++) {
       for (const lane of [game.lane - r, game.lane + r]) {
         if (lane < 0 || lane >= config.lanes) continue;
-        if (game.cells.get(`${lane}:${f}`) === 'energy') collect(lane, f);
+        const k = game.cells.get(`${lane}:${f}`);
+        if (k === 'energy' || k === 'cache') collect(lane, f);
       }
     }
 
     const kind = game.cells.get(`${game.lane}:${f}`);
 
-    if (kind === 'energy') { collect(game.lane, f); return; }
+    if (kind === 'energy' || kind === 'cache') { collect(game.lane, f); return; }
 
     // Immune while recovering from the last slip, but still able to collect.
     if (game.recover > 0) return;
@@ -805,6 +837,7 @@
   function collect(lane, f) {
     {
       const key = `${lane}:${f}`;
+      const wasCache = game.cells.get(key) === 'cache';
       game.cells.delete(key);
       /* Remove the mesh. It used to stay on screen after being collected, so
        * picking a fragment up looked like nothing had happened at all — the
@@ -816,10 +849,16 @@
         m.userData.pop = 1;
         game.popping.push(m);
       }
+      if (wasCache) {
+        game.cache = config.cacheTime;
+        game.caches++;
+        showFeed('SUPPLY CACHE  ·  DOUBLE PAY, WIDE REACH');
+        sound('cache');
+      }
       const band = riskBand();
       game.energy += band.mult;
       game.collected += band.mult;
-      showFeed(band.mult > 1 ? `+${band.mult}  ${band.label}` : '+1');
+      if (!wasCache) showFeed(band.mult > 1 ? `+${band.mult}  ${band.label}` : '+1');
       sound('pickup', band.mult);
       ui.energy.classList.remove('pulse');
       void ui.energy.offsetWidth;
@@ -833,8 +872,11 @@
    * how close the storm is. */
   function riskBand() {
     const gap = game.floor - game.storm;
-    for (const b of config.riskBands) if (gap <= b.within) return b;
-    return { within: Infinity, mult: config.baseMult, label: '' };
+    const boost = game.cache > 0 ? config.cacheMult : 1;
+    for (const b of config.riskBands) {
+      if (gap <= b.within) return { ...b, mult: b.mult * boost, label: boost > 1 ? `${b.label} · CACHE` : b.label };
+    }
+    return { within: Infinity, mult: config.baseMult * boost, label: boost > 1 ? 'CACHE' : '' };
   }
 
   function slip(reason) {
@@ -883,6 +925,7 @@
       game.coyote = Math.max(0, game.coyote - dt);
     }
     if (game.recover > 0) game.recover = Math.max(0, game.recover - dt);
+    if (game.cache > 0) game.cache = Math.max(0, game.cache - dt);
     updateFlip(dt);
     if (game.buffered > 0) {
       game.buffered = Math.max(0, game.buffered - dt);
@@ -1087,6 +1130,9 @@
     ui.routeHint.textContent = text;
     ui.routeHint.className = `route-hint ${tone}`;
 
+    ui.cacheChip.hidden = !(game.cache > 0);
+    if (game.cache > 0) ui.cacheChip.textContent = `⬛ CACHE ${game.cache.toFixed(1)}s · ×${riskBand().mult}`;
+
     const warning = game.flipPhase === 'warn';
     ui.game.parentElement.classList.toggle('turning', warning || game.flipPhase === 'turn');
     ui.turnWarn.hidden = !warning;
@@ -1121,6 +1167,8 @@
     if (game.flipPhase === 'turn') return [9, 'HOLD ON', 'turning'];
 
     if (game.health === 1) return [5, 'ONE LIFE LEFT — reach the next milestone to patch up', 'danger'];
+
+    if (game.cache > 0) return [4, `CACHE BURNING — dive at the storm, everything pays ×${riskBand().mult}`, 'cache'];
 
     const band = riskBand();
     if (band.mult >= 4) return [4, `IN THE TEETH · energy pays ×${band.mult}`, 'danger'];
@@ -1373,6 +1421,7 @@
       storm: game?.storm, stormGap: (game?.floor ?? 0) - (game?.storm ?? 0),
       stormFraction: game?.stormFraction, climbSpeed: game ? climbSpeed() : 0, peak: game?.peak,
       multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint, mirrored: game?.mirrored,
+      cache: game?.cache, caches: game?.caches,
       flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps,
       upgrades: game && { ...game.upgrades }, airJumps: game?.airJumps,
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
