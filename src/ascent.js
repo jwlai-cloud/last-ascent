@@ -139,12 +139,21 @@
      * resources "into something more useful through crafting, refining or
      * upgrading", and consumable spends alone made that thin.
      */
+    /*
+     * Every perk has a cap, and a maxed perk stops being offered.
+     *
+     * MAGNET is capped at one for a specific reason: its radius is in lanes,
+     * and there are three lanes, so a second stack reaches every lane at once.
+     * That collects the whole tower regardless of where the climber is, which
+     * deletes the routing decision the game is built on. An upgrade that
+     * removes a decision is not an upgrade.
+     */
     upgrades: [
-      { id: 'doubleJump', name: 'DOUBLE JUMP', blurb: 'one more jump in the air' },
-      { id: 'magnet',     name: 'MAGNET',      blurb: 'pull energy from nearby lanes' },
-      { id: 'longJump',   name: 'LONG JUMP',   blurb: 'jumps skip one more floor' },
-      { id: 'spareShield',name: 'SPARE SHIELD',blurb: 'a free shield at every split' },
-      { id: 'anchor',     name: 'ANCHOR',      blurb: 'slips cost far less height' },
+      { id: 'doubleJump', name: 'DOUBLE JUMP', blurb: 'one more jump in the air', max: 2 },
+      { id: 'magnet',     name: 'MAGNET',      blurb: 'pull energy from the next lane', max: 1 },
+      { id: 'longJump',   name: 'LONG JUMP',   blurb: 'jumps skip one more floor', max: 2 },
+      { id: 'spareShield',name: 'SPARE SHIELD',blurb: 'a free shield at every split', max: 2 },
+      { id: 'anchor',     name: 'ANCHOR',      blurb: 'slips cost far less height', max: 3 },
     ],
     anchorRelief: .4,        // floors shaved off a slip per stack
     minSlip: .3,
@@ -492,7 +501,9 @@
   /* Three different upgrades per split, so the choice is always between three
    * real things rather than the same perk in three lanes. */
   function rollUpgrades() {
-    const pool = config.upgrades.slice();
+    // A maxed perk is not offered again, so a split is always three real choices.
+    let pool = config.upgrades.filter(u => (game.upgrades[u.id] || 0) < u.max);
+    if (pool.length < config.lanes) pool = pool.concat(config.upgrades.filter(u => !pool.includes(u)));
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(game.rand() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -547,12 +558,8 @@
   /* Redraw everything whose x depends on the lane mapping. Only called when
    * the mirror experiment is enabled. */
   function rebuildLaneVisuals() {
-    for (const [key, m] of game.meshes) {
-      const lane = Number(key.split(':')[0]);
-      m.position.x = laneX(lane);
-    }
+    for (const cell of game.cellGroups) cell.position.x = laneX(cell.userData.lane);
     for (const l of game.splitLabels) l.mesh.position.x = laneX(l.lane);
-    game.props.traverse(o => { if (o.userData.lane !== undefined) o.position.x = laneX(o.userData.lane); });
   }
 
   /* A band across the tower at each split with each lane's perk named on it.
@@ -587,43 +594,59 @@
     renderSection(fromFloor);
   }
 
+  /*
+   * One GROUP per cell, positioned at that lane's x, with everything drawn as
+   * a child at local coordinates.
+   *
+   * The previous version placed each prop at an absolute x and tagged only the
+   * ledges with their lane, so a mirroring turn moved the ledges and the energy
+   * and left the spikes and rubble exactly where they were. The grid said
+   * hazard, the screen showed clear ground, and the player was punished for
+   * believing their eyes. Grouping makes that class of bug impossible: there is
+   * one position per cell and mirroring moves it.
+   */
   function renderSection(fromFloor) {
     for (let f = fromFloor; f < fromFloor + config.splitEvery; f++) {
       for (let lane = 0; lane < config.lanes; lane++) {
         const kind = game.cells.get(`${lane}:${f}`);
-        const x = laneX(lane), y = f;
+
+        const cell = new T.Group();
+        cell.position.set(laneX(lane), f, 0);
+        cell.userData.lane = lane;
+        game.props.add(cell);
+        game.cellGroups.push(cell);
+
         if (kind !== 'gap') {
-          const ledge = mesh(new T.BoxGeometry(config.laneWidth * .88, .22, 1.1), mat(colors.ledge), game.props, x, y, 0);
+          const ledge = mesh(new T.BoxGeometry(config.laneWidth * .88, .22, 1.1), mat(colors.ledge), cell);
           ledge.castShadow = true; ledge.receiveShadow = true;
-          ledge.userData.lane = lane;
         } else {
-          /* A gap was drawn as nothing at all, which reads as "no information"
-           * rather than "danger". Broken stubs at each side say a ledge used to
-           * be here and is not any more. */
+          /* A gap drawn as nothing reads as absence of information rather than
+           * danger, so broken stubs say a ledge used to be here. */
           for (const side of [-1, 1]) {
-            const stub = mesh(new T.BoxGeometry(config.laneWidth * .2, .2, 1.1), mat(colors.rubble), game.props,
-              x + side * config.laneWidth * .34, y, 0);
+            const stub = mesh(new T.BoxGeometry(config.laneWidth * .2, .2, 1.1), mat(colors.rubble), cell,
+              side * config.laneWidth * .34, 0, 0);
             stub.rotation.z = side * .28;
             stub.castShadow = true;
           }
         }
+
         if (kind === 'energy') {
-          const e = mesh(new T.OctahedronGeometry(.26), mat(colors.energy, .25), game.props, x, y + .55, .5);
+          const e = mesh(new T.OctahedronGeometry(.26), mat(colors.energy, .25), cell, 0, .55, .5);
           e.material.emissive = new T.Color(colors.energy);
           e.material.emissiveIntensity = .75;
-          e.userData.baseY = y + .55;
+          e.userData.baseY = .55;
           game.spins.push(e);
           game.meshes.set(`${lane}:${f}`, e);
         }
+
         if (kind === 'hazard') {
-          /* Three spikes, not one cone. A row of spikes is the most universally
-           * understood "do not touch" shape there is, and it cannot be mistaken
-           * for the climber or for a pickup. */
+          /* Three spikes rather than one cone: a row of spikes is the most
+           * universally understood "do not touch" shape there is. */
           const spikeMat = mat(colors.hazard, .45);
           spikeMat.emissive = new T.Color(colors.hazard);
           spikeMat.emissiveIntensity = .45;
           for (const off of [-.32, 0, .32]) {
-            mesh(new T.ConeGeometry(.14, .46, 6), spikeMat, game.props, x + off, y + .34, .4).castShadow = true;
+            mesh(new T.ConeGeometry(.14, .46, 6), spikeMat, cell, off, .34, .4).castShadow = true;
           }
         }
       }
@@ -655,7 +678,7 @@
 
     game = {
       rand: rng(seed ?? ((Date.now() ^ (Math.random() * 1e9)) >>> 0)),
-      props, spins: [], splitLabels: [],
+      props, spins: [], splitLabels: [], cellGroups: [],
       cells: new Map(),
       meshes: new Map(),   // cell key -> mesh, so a collected fragment can be removed
       popping: [],         // meshes mid-pickup animation
@@ -760,7 +783,8 @@
     if (game.airborne > 0) { game.skipped++; return; }
 
     // MAGNET sweeps the neighbouring lanes on the way past.
-    for (let r = 1; r <= game.upgrades.magnet; r++) {
+    const reach = Math.min(game.upgrades.magnet, config.lanes - 2);   // never every lane at once
+    for (let r = 1; r <= reach; r++) {
       for (const lane of [game.lane - r, game.lane + r]) {
         if (lane < 0 || lane >= config.lanes) continue;
         if (game.cells.get(`${lane}:${f}`) === 'energy') collect(lane, f);
@@ -914,10 +938,12 @@
     /* The lane you happen to be in is the route AND the upgrade. One decision,
      * made with the same swipe as everything else. */
     const perk = upgradesAt(f)[game.lane];
-    if (perk) {
+    if (perk && game.upgrades[perk.id] < perk.max) {
       game.upgrades[perk.id]++;
       showFeed(`${perk.name}  ·  ${routesAt(f)[game.lane]} ROUTE`);
       sound('upgrade');
+    } else if (perk) {
+      showFeed(`${perk.name} ALREADY MAXED  ·  ${routesAt(f)[game.lane]} ROUTE`);
     } else {
       showFeed(`${routesAt(f)[game.lane]} ROUTE`);
     }
@@ -1200,14 +1226,14 @@
 
     for (const e of game.spins) {
       e.rotation.y += dt * 2.4;
-      e.position.y = e.userData.baseY + Math.sin(clock * 3 + e.userData.baseY) * .09;
+      e.position.y = e.userData.baseY + Math.sin(clock * 3 + e.parent.position.y) * .09;
     }
 
     // Collected fragments burst upward and fade, so the pickup is unmissable.
     for (let i = game.popping.length - 1; i >= 0; i--) {
       const m = game.popping[i];
       m.userData.pop -= dt * 3.4;
-      if (m.userData.pop <= 0) { game.props.remove(m); game.popping.splice(i, 1); continue; }
+      if (m.userData.pop <= 0) { m.parent?.remove(m); game.popping.splice(i, 1); continue; }
       const t = 1 - m.userData.pop;
       m.scale.setScalar(1 + t * 1.8);
       m.position.y += dt * 3.2;
@@ -1370,7 +1396,11 @@
      * stream, so seeding without a reset changes almost nothing. */
     seed: n => { const was = game.running; reset(n); game.running = was; },
     mute: on => { muted = !!on; },
-    grant: (id, n = 1) => { game.upgrades[id] = n; sync(); },   // tests need a perk without waiting for a split
+    grant: (id, n = 1) => { game.upgrades[id] = n; sync(); },
+    cellScreenX: (lane, floor) => {
+      const g = game.cellGroups.find(c => c.userData.lane === lane && Math.round(c.position.y) === floor);
+      return g ? g.position.x : null;
+    },   // tests need a perk without waiting for a split
     setRecover: n => { game.recover = n; },
     // Lets a test or a playtester flip the experiment without editing source.
     laneScreenX: i => laneX(i),      // so a test can assert which side of the screen a lane is on

@@ -603,6 +603,79 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   await run(() => window.ascent.setFlip(0.55, false));
 }
 
+/*
+ * Two bugs found by playing, each with a regression here.
+ *
+ * The first: MAGNET's radius is in lanes and there are three lanes, so a second
+ * stack reached all of them and collected the whole tower wherever the climber
+ * stood — an upgrade that deleted the decision the game is built on.
+ */
+{
+  await fresh();
+  const magnet = await run(() => {
+    const a = window.ascent;
+    a.grant('magnet', 5);                    // try to over-stack it
+    // Stand at one edge; with three lanes only the far edge is two across.
+    for (let i = 0; i < 4 && a.getState().lane !== 0; i++) a.moveLane(-1);
+    const st = a.getState();
+    const f = Math.floor(st.floor) + 1;
+    // Only lane 2 holds anything, so anything gained came from two lanes over.
+    a.setCell(0, f, null); a.setCell(1, f, null); a.setCell(2, f, 'energy');
+    const before = a.getState().energy;
+    a.step(0.05, 60);
+    return { gained: a.getState().energy - before, lane: st.lane };
+  });
+  check('MAGNET never reaches every lane at once', magnet.gained === 0,
+    `standing in lane ${magnet.lane}, energy in lane 2 gained ${magnet.gained}`);
+
+  /* Sections are generated two ahead, so only sections rolled after a perk
+   * maxes can exclude it. Checked with a single maxed perk, because the pool
+   * deliberately refills with maxed perks rather than ever offering fewer than
+   * three choices — so this only holds while enough unmaxed ones remain. */
+  const caps = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    a.start(8); a.pause(true); a.mute(true);
+    a.setFlip(0, false);
+    a.grant('magnet', 1);
+    climbTo(14);
+    return { offered: a.getState().upgradesAhead, running: a.getState().running, magnet: a.getState().upgrades.magnet };
+  })()`);
+  check('a maxed perk stops being offered while other choices remain',
+    caps.running && !caps.offered.includes('magnet'),
+    `magnet at ${caps.magnet}, offered: ${(caps.offered || []).join(', ')}`);
+}
+
+/*
+ * The second, and the worse one: a mirroring turn moved the ledges and the
+ * energy but left the spikes and rubble where they were, so the grid said
+ * hazard while the screen showed clear ground. Props are grouped per cell now,
+ * so there is one position to move and none to forget.
+ */
+{
+  await fresh();
+  const desync = await run(() => {
+    const a = window.ascent;
+    a.setFlip(1, false);
+    const floor = Math.floor(a.getState().floor) + 3;
+    const before = [0, 1, 2].map(l => a.cellScreenX(l, floor));
+    a.forceFlip();
+    for (let i = 0; i < 300 && a.getState().flipPhase; i++) a.step(0.05);
+    const after = [0, 1, 2].map(l => a.cellScreenX(l, floor));
+    const lanes = [0, 1, 2].map(l => a.laneScreenX(l));
+    return { before, after, lanes, mirrored: a.getState().mirrored };
+  });
+  /* Whatever the turn did, every cell must be drawn where its lane now is.
+   * That is the invariant the bug broke. */
+  check('after a turn, every prop sits where its lane now is',
+    desync.after.every((x, l) => Math.abs(x - desync.lanes[l]) < 0.001),
+    `props ${JSON.stringify(desync.after)} vs lanes ${JSON.stringify(desync.lanes)}`);
+  check('a reversing turn actually moved the props',
+    !desync.mirrored || desync.after[0] !== desync.before[0],
+    `mirrored ${desync.mirrored}, lane 0 x ${desync.before[0]} -> ${desync.after[0]}`);
+  await run(() => window.ascent.setFlip(0.55, false));
+}
+
 check('no runtime errors', errors.length === 0, errors.join(' | '));
 
 await page.screenshot({ path: 'tests/last-run.png' });
