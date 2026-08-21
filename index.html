@@ -42,6 +42,8 @@
           <div class="pick" id="pick1"><b></b><small></small></div>
           <div class="pick" id="pick2"><b></b><small></small></div>
         </div>
+        <!-- The turn is only fair because this is impossible to miss. -->
+        <div class="turn-warning" id="turnWarn" hidden></div>
         <div class="feed" id="feed" aria-live="polite"></div>
       </section>
 
@@ -67,7 +69,7 @@
           <div class="modal-icon" id="modalIcon">🌩️</div>
           <p id="modalKicker">SURVIVAL &amp; RESOURCE MANAGEMENT</p>
           <h2 id="modalTitle">The Last Ascent</h2>
-          <p id="modalCopy">You cannot stop climbing and the storm never stops rising. <b>Swipe</b> to change lane, <b>tap</b> to jump — a jump <b>skips</b> the whole floor, spikes and energy alike. Collect energy — it is your score <b>and</b> your only fuel, so every point spent surviving comes off the run. Hazards make you <b>slip</b>. And energy is worth <b>more the closer the storm is</b> — ×2 within three floors, ×4 within one and a half. Climb too fast and you outrun your own pay. Every four floors the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>. You have <b>three lives</b>; every twenty floors banks your score and patches one back. Reach floor <b>100</b> and keep everything — almost nobody gets there.</p>
+          <p id="modalCopy">You cannot stop climbing and the storm never stops rising. <b>Swipe</b> to change lane, <b>tap</b> to jump — a jump <b>skips</b> the whole floor, spikes and energy alike. Collect energy — it is your score <b>and</b> your only fuel, so every point spent surviving comes off the run. Hazards make you <b>slip</b>. And energy is worth <b>more the closer the storm is</b> — ×2 within three floors, ×4 within one and a half. Climb too fast and you outrun your own pay. Every few floors the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b> — and the tower may <b>turn</b>, reversing which side each lane is on. You get a second and a half of warning. You have <b>three lives</b>; every twenty floors banks your score and patches one back. Reach floor <b>100</b> and keep everything — almost nobody gets there.</p>
           <button id="modalButton" type="button">START CLIMBING</button>
         </div>
       </section>

@@ -152,19 +152,26 @@
     orbit: .26,              // radians the camera swings at a split — about 15 degrees
 
     /*
-     * EXPERIMENT, off by default. At a split the tower spins half a turn and
-     * the lanes swap ends: the lane that was on the left is now on the right.
+     * THE TOWER TURNS. At a split the whole structure may swing through a
+     * random angle, and if it passes edge-on the lanes come back reversed —
+     * the lane that was on your left is now on your right.
      *
-     * `mirrorCompensates` decides whether it is spectacle or a trap. True and
-     * a swipe still moves the climber toward the side of the screen you swiped
-     * to, so the spin is pure show. False and your controls invert with the
-     * world, which is the disorienting version — and which makes the player
-     * fail at the input rather than at the game. Playability is 25% and every
-     * other decision here spends budget avoiding exactly that, so it ships off.
-     * Turn `mirrorSplits` on to feel the difference.
+     * It is telegraphed, and the telegraph is the entire reason this is fair.
+     * An untelegraphed control inversion makes the player fail at the input
+     * rather than at the game, which every other decision here spends
+     * Playability budget avoiding. Warned a second and a half ahead, with the
+     * angle named and the turn animated slowly enough to track, it becomes
+     * what it should be: a thing to read and prepare for.
+     *
+     * `flipCompensates` keeps a swipe screen-relative through the turn, which
+     * makes it spectacle rather than challenge. Off by default now that the
+     * warning exists.
      */
-    mirrorSplits: false,
-    mirrorCompensates: true,
+    flipChance: .55,         // probability a split turns the tower at all
+    flipWarn: 1.6,           // seconds of warning before it moves
+    flipTurn: .9,            // seconds the turn itself takes
+    flipAngles: [140, 180, 220, 300, 360],   // degrees; under 90 or over 270 keeps lane order
+    flipCompensates: false,
     hintDwell: 3.2,          // seconds a coaching line holds before a calmer one takes the slot
 
     // Energy is the score AND the survival budget. One resource, three spends.
@@ -198,7 +205,7 @@
     'buyShield', 'buySurge', 'buyGrapple', 'costShield', 'costSurge', 'costGrapple',
     'startModal', 'modalButton', 'modalTitle', 'modalCopy', 'modalIcon', 'modalKicker',
     'reset', 'mute', 'summitGoal', 'splitChoice', 'pick0', 'pick1', 'pick2',
-    'climbFill', 'climbNext',
+    'climbFill', 'climbNext', 'turnWarn',
   ].map(id => [id, document.getElementById(id)]));
 
   const BEST_KEY = 'lastascent.best';
@@ -272,6 +279,8 @@
     if (kind === 'spend') tone({ freq: 500, to: 760, dur: .1, type: 'square', gain: .1 });
     if (kind === 'upgrade') [0, .07, .14].forEach((d, i) => tone({ freq: 520 * (1 + i * .26), dur: .16, type: 'triangle', gain: .12, delay: d }));
     if (kind === 'summit') [0, .1, .2, .34].forEach((d, i) => tone({ freq: 440 * Math.pow(1.26, i), dur: .5, type: 'triangle', gain: .15, delay: d }));
+    if (kind === 'warn') [0, .18, .36].forEach(d => tone({ freq: 300, to: 300, dur: .1, type: 'square', gain: .09, delay: d }));
+    if (kind === 'turn') tone({ freq: 220, to: 520, dur: .8, type: 'sawtooth', gain: .1 });
     if (kind === 'dead') { noise({ dur: .7, gain: .3, freq: 300 }); tone({ freq: 160, to: 40, dur: .8, type: 'sawtooth', gain: .18 }); }
   }
 
@@ -491,6 +500,50 @@
     return pool.slice(0, config.lanes);
   }
 
+  /*
+   * A turn runs in two phases. The warning gives the player time to find the
+   * lane they want to be in; the turn itself swaps the lane mapping halfway
+   * through, at the moment the tower is edge-on and the swap is invisible.
+   */
+  function maybeStartFlip() {
+    if (game.rand() > config.flipChance) return;
+    const deg = config.flipAngles[Math.floor(game.rand() * config.flipAngles.length)];
+    const dir = game.rand() < .5 ? -1 : 1;
+    game.flipAngle = deg * dir * Math.PI / 180;
+    game.flipSwaps = Math.cos(deg * Math.PI / 180) < 0;   // did it end up facing the other way
+    game.flipPhase = 'warn';
+    game.flipTimer = config.flipWarn;
+    sound('warn');
+  }
+
+  function updateFlip(dt) {
+    if (!game.flipPhase) return;
+    game.flipTimer -= dt;
+    if (game.flipPhase === 'warn' && game.flipTimer <= 0) {
+      game.flipPhase = 'turn';
+      game.flipTimer = config.flipTurn;
+      game.flipFrom = orbit;
+      game.flipHalfDone = false;
+      sound('turn');
+    }
+    if (game.flipPhase === 'turn') {
+      const t = 1 - Math.max(0, game.flipTimer) / config.flipTurn;
+      const eased = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      orbit = game.flipFrom + game.flipAngle * eased;
+      // Swap the lanes edge-on, where the change cannot be seen happening.
+      if (!game.flipHalfDone && t >= .5) {
+        game.flipHalfDone = true;
+        if (game.flipSwaps) { game.mirrored = !game.mirrored; rebuildLaneVisuals(); }
+      }
+      if (game.flipTimer <= 0) {
+        game.flipPhase = null;
+        // Land back on a normal shoulder rather than wherever the spin ended.
+        orbit = game.mirrored ? -config.orbit : config.orbit;
+        orbitTarget = orbit;
+      }
+    }
+  }
+
   /* Redraw everything whose x depends on the lane mapping. Only called when
    * the mirror experiment is enabled. */
   function rebuildLaneVisuals() {
@@ -614,6 +667,8 @@
       stormFraction: config.stormFraction,
       health: config.health,
       mirrored: false,
+      flipPhase: null,      // null | 'warn' | 'turn'
+      flipTimer: 0, flipAngle: 0, flipFrom: 0, flipSwaps: false,
       combo: 0, comboAt: 0,   // consecutive hits, and the floor of the last one
       recover: 0,          // seconds of post-slip immunity remaining
       airborne: 0,         // seconds left in the current jump arc
@@ -647,7 +702,7 @@
     if (!game.running) return false;
     // With compensation on, a swipe moves the climber toward the side of the
     // screen it was aimed at, whichever way the tower is currently facing.
-    const applied = game.mirrored && config.mirrorCompensates ? -dir : dir;
+    const applied = game.mirrored && config.flipCompensates ? -dir : dir;
     const next = Math.min(config.lanes - 1, Math.max(0, game.lane + applied));
     if (next === game.lane) return false;
     game.lane = next;
@@ -804,6 +859,7 @@
       game.coyote = Math.max(0, game.coyote - dt);
     }
     if (game.recover > 0) game.recover = Math.max(0, game.recover - dt);
+    updateFlip(dt);
     if (game.buffered > 0) {
       game.buffered = Math.max(0, game.buffered - dt);
       if (game.airborne === 0) { game.buffered = 0; game.airborne = jumpDuration(); game.jumpSpan = game.airborne; }
@@ -851,11 +907,7 @@
   function reachSplit(f) {
     // Swing to the other shoulder at each split. Visual only — see render().
     orbitTarget = orbitTarget > 0 ? -config.orbit : config.orbit;
-    if (config.mirrorSplits) {
-      game.mirrored = !game.mirrored;
-      showFeed('THE TOWER TURNS');
-      rebuildLaneVisuals();
-    }
+    maybeStartFlip();
     game.nextSplit = sectionStart(f) + config.splitEvery;
     game.stormFraction += config.stormRampAdd;
 
@@ -1008,6 +1060,15 @@
     const [text, tone] = hint();
     ui.routeHint.textContent = text;
     ui.routeHint.className = `route-hint ${tone}`;
+
+    const warning = game.flipPhase === 'warn';
+    ui.game.parentElement.classList.toggle('turning', warning || game.flipPhase === 'turn');
+    ui.turnWarn.hidden = !warning;
+    if (warning) {
+      ui.turnWarn.textContent = `${game.flipSwaps ? '⟲ LANES REVERSE' : '⟲ TOWER TURNS'}  ${game.flipTimer.toFixed(1)}`;
+      // the pulse tightens as it arrives, so urgency is felt not read
+      ui.turnWarn.style.animationDuration = `${Math.max(.12, game.flipTimer / 5)}s`;
+    }
   }
 
   /*
@@ -1025,6 +1086,13 @@
     const ahead = game.cells.get(`${game.lane}:${next}`);
     if (ahead === 'gap') { game.taughtJump = true; return [5, 'GAP AHEAD — TAP TO JUMP', 'danger']; }
     if (ahead === 'hazard') { game.taughtJump = true; return [5, 'SPIKES — TAP TO JUMP OR SWIPE AWAY', 'danger']; }
+
+    /* Nothing outranks an incoming turn. The player needs the whole warning
+     * window to decide which lane to be standing in when the world moves. */
+    if (game.flipPhase === 'warn') {
+      return [9, `THE TOWER IS TURNING — ${game.flipSwaps ? 'LANES WILL REVERSE' : 'HOLD YOUR LANE'}`, 'turning'];
+    }
+    if (game.flipPhase === 'turn') return [9, 'HOLD ON', 'turning'];
 
     if (game.health === 1) return [5, 'ONE LIFE LEFT — reach the next milestone to patch up', 'danger'];
 
@@ -1164,7 +1232,7 @@
      * spends its whole Playability budget avoiding. Fifteen degrees is enough
      * to show the tower is a solid volume and never enough to reorder lanes.
      */
-    orbit += (orbitTarget - orbit) * Math.min(1, dt * 1.6);
+    if (game.flipPhase !== 'turn') orbit += (orbitTarget - orbit) * Math.min(1, dt * 1.6);
     const r = 13;
     camera.position.set(
       Math.sin(orbit) * r + Math.cos(orbit) * 1.4,
@@ -1279,6 +1347,7 @@
       storm: game?.storm, stormGap: (game?.floor ?? 0) - (game?.storm ?? 0),
       stormFraction: game?.stormFraction, climbSpeed: game ? climbSpeed() : 0, peak: game?.peak,
       multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint, mirrored: game?.mirrored,
+      flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps,
       upgrades: game && { ...game.upgrades }, airJumps: game?.airJumps,
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
@@ -1305,10 +1374,11 @@
     setRecover: n => { game.recover = n; },
     // Lets a test or a playtester flip the experiment without editing source.
     laneScreenX: i => laneX(i),      // so a test can assert which side of the screen a lane is on
-    setMirror: (on, compensates = true) => {
-      config.mirrorSplits = !!on;
-      config.mirrorCompensates = !!compensates;
+    setFlip: (chance, compensates = false) => {
+      config.flipChance = chance;
+      config.flipCompensates = !!compensates;
     },
+    forceFlip: () => { maybeStartFlip(); sync(); },   // sync too, or the HUD lags the state
     clearBest: () => saveBest(0),
     pause: on => { game.paused = !!on; },
     step: (dt, times = 1) => { for (let i = 0; i < times && game.running; i++) tick(dt); },

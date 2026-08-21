@@ -62,6 +62,7 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 .route-hint.close{color:var(--beacon)}
 /* A warning has to arrive faster than the thing it warns about. */
 .route-hint.danger{color:#fff;background:var(--danger);animation:warn .45s ease-in-out infinite}
+.route-hint.turning{color:#2a1608;background:var(--beacon);animation:warn .3s ease-in-out infinite}
 @keyframes warn{50%{transform:translateX(-50%) scale(1.06)}}
 .stat.energy strong.pulse{animation:bump .35s ease-out}
 @keyframes bump{0%{transform:scale(1);color:#fff}40%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
@@ -74,6 +75,13 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 .pick small{font-size:.36em;color:#8e9cc4;line-height:1.15}
 .pick.chosen{border-color:var(--energy);background:rgba(20,60,54,.9)}
 .pick.chosen b{color:var(--energy)}
+
+/* The turn warning owns the middle of the screen while it counts down. */
+.turn-warning{position:absolute;top:44%;left:50%;transform:translateX(-50%);padding:.4em .7em;border-radius:.4em;background:var(--beacon);color:#2a1608;font-size:.72em;font-weight:1000;letter-spacing:.08em;white-space:nowrap;pointer-events:none;animation:turnpulse .4s ease-in-out infinite}
+@keyframes turnpulse{0%,100%{transform:translateX(-50%) scale(1);opacity:1}50%{transform:translateX(-50%) scale(1.08);opacity:.72}}
+/* And the whole arena takes on the warning colour, so it cannot be missed by
+   someone watching the climber rather than the middle of the screen. */
+.arena.turning::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;box-shadow:inset 0 0 4em rgba(255,224,102,.55);animation:turnpulse .4s ease-in-out infinite}
 
 .feed{position:absolute;top:26%;left:50%;width:88%;transform:translateX(-50%);text-align:center;font-size:1.35em;font-weight:1000;letter-spacing:-.04em;text-shadow:0 3px 12px rgba(0,0,0,.8);pointer-events:none;min-height:1.6em}
 .feed.show{animation:pop .9s ease both}
