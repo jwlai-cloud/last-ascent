@@ -76,7 +76,14 @@ are reproducible, slips work.
    slipping drops you *below* the hazard you just hit, so you climb back into
    it, and with the streak multiplier that is unavoidable. There is 1.4s of
    recovery immunity now, and the climber blinks through it.
-2. **The playtest gate — five runs.** The test is whether the swipe
+2. **Judge the tower-flip experiment.** `config.mirrorSplits` is off. Turn it
+   on (or call `window.ascent.setMirror(true, true)`) and the tower spins half
+   a turn at every split, swapping which side of the screen each lane is on.
+   With `mirrorCompensates` true it is pure spectacle; set it false and your
+   controls invert with the world. The second version is the one that was
+   asked for and the one I would not ship — it makes the player fail at the
+   input rather than at the game, and Playability is 25%. Play both and decide.
+3. **The playtest gate — five runs.** The test is whether the swipe
    disappears from your attention. If it does not, no design fixes it and the
    honest move is to ship `../beanstalk`.
 3. Tune the risk bands. `config.riskBands` is the single most load-bearing

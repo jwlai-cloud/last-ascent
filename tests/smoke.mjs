@@ -324,7 +324,11 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     a.start(6); a.pause(true); a.mute(true);
     a.grant('magnet', 1);
     a.setCell(0, 1, 'energy'); a.setCell(1, 1, 'energy'); a.setCell(2, 1, 'energy');
-    while (a.getState().lane !== 1) a.moveLane(1 - a.getState().lane);
+    /* Bounded, because with compensation on moveLane negates the direction and
+     * a naive "keep nudging toward 1" loop never converges. */
+    for (let i = 0; i < 8 && a.getState().lane !== 1; i++) {
+      a.moveLane(a.getState().lane > 1 ? 1 : -1);
+    }
     a.step(0.05, 60);
     out.magnet = a.getState().energy;
 
@@ -524,6 +528,40 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     return a.getState().hint;
   });
   check('riding the storm says what it is paying', /×4|x4/.test(teeth), teeth);
+}
+
+/* The tower-flip experiment. It ships off; these assert that turning it on
+ * does what it claims, and — the part that matters — that with compensation on
+ * a swipe still moves the climber toward the side of the screen it was aimed
+ * at. Without that guarantee the feature is an input trap. */
+{
+  await fresh();
+  const flip = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    a.setMirror(true, true);
+    const before = a.getState().mirrored;
+    climbTo(a.getState().nextSplit + 1);
+    const after = a.getState();
+    /* Park in the middle lane so a move is unambiguous, then swipe "screen
+     * right". Mirrored, the screen-right lane is index 0, so compensation
+     * means the index must go DOWN. */
+    /* Bounded, because with compensation on moveLane negates the direction and
+     * a naive "keep nudging toward 1" loop never converges. */
+    for (let i = 0; i < 8 && a.getState().lane !== 1; i++) {
+      a.moveLane(a.getState().lane > 1 ? 1 : -1);
+    }
+    const laneBefore = a.getState().lane;
+    a.moveLane(1);
+    const xBefore = a.laneScreenX(laneBefore), xAfter = a.laneScreenX(a.getState().lane);
+    return { before, mirrored: after.mirrored, laneBefore, laneAfter: a.getState().lane, xBefore, xAfter };
+  })()`);
+  check('the tower flip turns the world over when enabled',
+    flip.before === false && flip.mirrored === true, `mirrored ${flip.mirrored}`);
+  check('with compensation on, a swipe still moves the way you swiped',
+    flip.laneBefore === 1 && flip.laneAfter === 0 && flip.xAfter > flip.xBefore,
+    `lane ${flip.laneBefore} -> ${flip.laneAfter}, screen x ${flip.xBefore} -> ${flip.xAfter}`);
+  await run(() => window.ascent.setMirror(false));
 }
 
 check('no runtime errors', errors.length === 0, errors.join(' | '));

@@ -149,6 +149,22 @@
     anchorRelief: .4,        // floors shaved off a slip per stack
     minSlip: .3,
 
+    orbit: .26,              // radians the camera swings at a split — about 15 degrees
+
+    /*
+     * EXPERIMENT, off by default. At a split the tower spins half a turn and
+     * the lanes swap ends: the lane that was on the left is now on the right.
+     *
+     * `mirrorCompensates` decides whether it is spectacle or a trap. True and
+     * a swipe still moves the climber toward the side of the screen you swiped
+     * to, so the spin is pure show. False and your controls invert with the
+     * world, which is the disorienting version — and which makes the player
+     * fail at the input rather than at the game. Playability is 25% and every
+     * other decision here spends budget avoiding exactly that, so it ships off.
+     * Turn `mirrorSplits` on to feel the difference.
+     */
+    mirrorSplits: false,
+    mirrorCompensates: true,
     hintDwell: 3.2,          // seconds a coaching line holds before a calmer one takes the slot
 
     // Energy is the score AND the survival budget. One resource, three spends.
@@ -173,7 +189,7 @@
   const colors = {
     sky: 0x121a2e, tower: 0x2b3350, towerEdge: 0x3d4870, ledge: 0x55628f,
     climber: 0xffd9a0, suit: 0x3f7fd6, pack: 0x2b3350,
-    energy: 0x66e0c8, hazard: 0xe0556b, splitPlate: 0x4a5a8f, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0xffb45c,
+    energy: 0x66e0c8, hazard: 0xe0556b, splitPlate: 0x4a5a8f, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0xffb45c, city: 0x0d1424,
     safe: 0x63c47a, danger: 0xe0556b, unknown: 0xc79bf0, beacon: 0xffe066,
   };
 
@@ -259,7 +275,8 @@
     if (kind === 'dead') { noise({ dur: .7, gain: .3, freq: 300 }); tone({ freq: 160, to: 40, dur: .8, type: 'sawtooth', gain: .18 }); }
   }
 
-  let renderer, scene, camera, world, climberMesh, climberLimbs, shieldMesh, stormMesh, lightning, clock = 0, last = 0;
+  let renderer, scene, camera, world, climberMesh, climberLimbs, shieldMesh, stormMesh, lightning;
+  let keyLight, stormLight, orbit = 0, orbitTarget = 0, clock = 0, last = 0;
   let shake = 0, flash = 0, lightningTimer = 1;
   let game = null;
 
@@ -271,7 +288,10 @@
     return m;
   }
 
-  const laneX = i => (i - (config.lanes - 1) / 2) * config.laneWidth;
+  /* Mirroring flips which side of the screen a lane index appears on. The grid
+   * is untouched — only the drawing changes — so nothing about collision,
+   * determinism or the tests depends on it. */
+  const laneX = i => (i - (config.lanes - 1) / 2) * config.laneWidth * (game?.mirrored ? -1 : 1);
 
   /*
    * Deterministic RNG. A run is a seed, so a test can replay one exactly and a
@@ -290,22 +310,47 @@
   function init() {
     renderer = new T.WebGLRenderer({ canvas: ui.game, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = T.PCFSoftShadowMap;
     scene = new T.Scene();
     scene.background = new T.Color(colors.sky);
-    /* No fog. With an orthographic camera parked at z=30 every object sits
-     * about thirty units away, so a 14-26 fog range rendered the entire scene
-     * as flat sky colour — the climber included. Depth is carried by the lane
-     * shading instead, and atmosphere is not scored. */
 
-    // Orthographic keeps the framing maths exact and reads the vertical axis
-    // better than perspective, which is the axis the whole game happens on.
-    camera = new T.OrthographicCamera(-1, 1, 1, -1, .1, 200);
-    camera.position.set(0, 0, 30);
+    /* Fog, ranged for a perspective camera this time. The first attempt used
+     * 14-26 with an orthographic camera parked at z=30, which put every object
+     * beyond the far plane and rendered the whole scene as flat sky. */
+    scene.fog = new T.Fog(colors.sky, 26, 70);
 
-    scene.add(new T.HemisphereLight(0xbfd4ff, 0x2a1f3a, 2.2));
-    const key = new T.DirectionalLight(0xfff0d0, 1.5);
-    key.position.set(-5, 12, 10);
-    scene.add(key);
+    /*
+     * PERSPECTIVE, not orthographic. The playtest note was "3d, but generally
+     * like a 2.5d feel, no depth feeling", and an orthographic projection has
+     * no perspective convergence by definition — parallel lines stay parallel,
+     * distant things stay the same size, and nothing can read as far away. It
+     * was chosen to make the framing maths exact; the grid does not care what
+     * the camera does, so the maths is exact either way.
+     *
+     * The camera also sits slightly to one side and above, so ledges show a
+     * side face and the tower recedes. Small offset: enough for volume, not so
+     * much that lane order stops being obvious.
+     */
+    camera = new T.PerspectiveCamera(52, 1, .5, 220);
+    camera.position.set(1.4, 2, 13);
+
+    scene.add(new T.HemisphereLight(0xbfd4ff, 0x2a1f3a, 1.35));
+
+    /* A key light that casts. Shadows are what actually say "these objects are
+     * in front of that wall" — more than any amount of shading. */
+    keyLight = new T.DirectionalLight(0xfff0d0, 2.1);
+    keyLight.position.set(-6, 10, 9);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(1024, 1024);
+    const sc = keyLight.shadow.camera;
+    sc.left = -8; sc.right = 8; sc.top = 10; sc.bottom = -10; sc.near = .5; sc.far = 40;
+    scene.add(keyLight);
+    scene.add(keyLight.target);
+
+    // A cold uplight from the storm, so the danger below has a colour on the wall.
+    stormLight = new T.PointLight(0xff5a7a, 0, 16, 2);
+    scene.add(stormLight);
 
     world = new T.Group();
     scene.add(world);
@@ -320,10 +365,21 @@
 
   function buildStatics() {
     // The tower face sits behind the lanes so the climber always reads in front.
-    mesh(new T.BoxGeometry(config.laneWidth * config.lanes + 1.4, 400, 1), mat(colors.tower), world, 0, 180, -1.5);
+    const face = mesh(new T.BoxGeometry(config.laneWidth * config.lanes + 1.4, 400, 3), mat(colors.tower), world, 0, 180, -2.5);
+    face.receiveShadow = true;
+
+    /* A city far below and behind. With a perspective camera this parallaxes
+     * for free as the climb rises, which is most of what sells height. */
+    for (let i = 0; i < 26; i++) {
+      const w = 2 + (i * 7 % 5), h = 14 + (i * 13 % 40), x = ((i * 9 % 19) - 9) * 4.5;
+      const z = -22 - (i % 3) * 9;
+      const b = mesh(new T.BoxGeometry(w, h, w), mat(colors.city, 1), world, x, h / 2 - 26, z);
+      b.material.fog = true;
+    }
     for (let i = 0; i <= config.lanes; i++) {
-      mesh(new T.BoxGeometry(.06, 400, .2), mat(colors.towerEdge), world,
-        laneX(i) - config.laneWidth / 2, 180, -.85);
+      const rib = mesh(new T.BoxGeometry(.09, 400, .55), mat(colors.towerEdge), world,
+        laneX(i) - config.laneWidth / 2, 180, -.7);
+      rib.castShadow = true; rib.receiveShadow = true;
     }
 
     /* Windows up the tower face. Without something passing, vertical motion is
@@ -352,6 +408,7 @@
      * which is the one visual bar the guidance actually sets. */
     climberMesh = new T.Group();
     world.add(climberMesh);
+    climberMesh.userData.castsSet = false;
     const skin = mat(colors.climber, .45);
     skin.emissive = new T.Color(colors.climber);
     skin.emissiveIntensity = .28;
@@ -379,6 +436,7 @@
     shieldMesh.visible = false;
     climberMesh.traverse(o => {
       if (o.material && o.material.emissive) o.userData.baseColor = o.material.emissive.getHex();
+      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
     });
 
     /* The storm is one slab whose top edge is the number. No simulation — the
@@ -433,6 +491,17 @@
     return pool.slice(0, config.lanes);
   }
 
+  /* Redraw everything whose x depends on the lane mapping. Only called when
+   * the mirror experiment is enabled. */
+  function rebuildLaneVisuals() {
+    for (const [key, m] of game.meshes) {
+      const lane = Number(key.split(':')[0]);
+      m.position.x = laneX(lane);
+    }
+    for (const l of game.splitLabels) l.mesh.position.x = laneX(l.lane);
+    game.props.traverse(o => { if (o.userData.lane !== undefined) o.position.x = laneX(o.userData.lane); });
+  }
+
   /* A band across the tower at each split with each lane's perk named on it.
    * The choice has to be visible before it is made, or it is not a choice. */
   function markSplit(floor) {
@@ -471,15 +540,18 @@
         const kind = game.cells.get(`${lane}:${f}`);
         const x = laneX(lane), y = f;
         if (kind !== 'gap') {
-          mesh(new T.BoxGeometry(config.laneWidth * .88, .16, .8), mat(colors.ledge), game.props, x, y, 0);
+          const ledge = mesh(new T.BoxGeometry(config.laneWidth * .88, .22, 1.1), mat(colors.ledge), game.props, x, y, 0);
+          ledge.castShadow = true; ledge.receiveShadow = true;
+          ledge.userData.lane = lane;
         } else {
           /* A gap was drawn as nothing at all, which reads as "no information"
            * rather than "danger". Broken stubs at each side say a ledge used to
            * be here and is not any more. */
           for (const side of [-1, 1]) {
-            const stub = mesh(new T.BoxGeometry(config.laneWidth * .2, .16, .8), mat(colors.rubble), game.props,
+            const stub = mesh(new T.BoxGeometry(config.laneWidth * .2, .2, 1.1), mat(colors.rubble), game.props,
               x + side * config.laneWidth * .34, y, 0);
             stub.rotation.z = side * .28;
+            stub.castShadow = true;
           }
         }
         if (kind === 'energy') {
@@ -498,7 +570,7 @@
           spikeMat.emissive = new T.Color(colors.hazard);
           spikeMat.emissiveIntensity = .45;
           for (const off of [-.32, 0, .32]) {
-            mesh(new T.ConeGeometry(.14, .46, 6), spikeMat, game.props, x + off, y + .31, .4);
+            mesh(new T.ConeGeometry(.14, .46, 6), spikeMat, game.props, x + off, y + .34, .4).castShadow = true;
           }
         }
       }
@@ -523,6 +595,7 @@
   }
 
   function reset(seed) {
+    orbit = orbitTarget = 0;
     if (game?.props) world.remove(game.props);
     const props = new T.Group();
     world.add(props);
@@ -540,6 +613,7 @@
       storm: config.stormStart,
       stormFraction: config.stormFraction,
       health: config.health,
+      mirrored: false,
       combo: 0, comboAt: 0,   // consecutive hits, and the floor of the last one
       recover: 0,          // seconds of post-slip immunity remaining
       airborne: 0,         // seconds left in the current jump arc
@@ -571,7 +645,10 @@
 
   function moveLane(dir) {
     if (!game.running) return false;
-    const next = Math.min(config.lanes - 1, Math.max(0, game.lane + dir));
+    // With compensation on, a swipe moves the climber toward the side of the
+    // screen it was aimed at, whichever way the tower is currently facing.
+    const applied = game.mirrored && config.mirrorCompensates ? -dir : dir;
+    const next = Math.min(config.lanes - 1, Math.max(0, game.lane + applied));
     if (next === game.lane) return false;
     game.lane = next;
     return true;
@@ -772,6 +849,13 @@
   /* Crossing into a new section is the moment the choice locks in: the lane
    * the climber happens to be in is the route they took. No menu, no pause. */
   function reachSplit(f) {
+    // Swing to the other shoulder at each split. Visual only — see render().
+    orbitTarget = orbitTarget > 0 ? -config.orbit : config.orbit;
+    if (config.mirrorSplits) {
+      game.mirrored = !game.mirrored;
+      showFeed('THE TOWER TURNS');
+      rebuildLaneVisuals();
+    }
     game.nextSplit = sectionStart(f) + config.splitEvery;
     game.stormFraction += config.stormRampAdd;
 
@@ -1064,25 +1148,49 @@
       m.material.transparent = true;
     }
 
-    const view = 12;
     const host = ui.game.parentElement, rect = host.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
-    const aspect = rect.width / rect.height;
+
     /* The climber sits low in frame so the player reads what is coming rather
      * than what is passed. Shake decays out of the value a slip sets. */
     shake = Math.max(0, shake - dt * 3.2);
-    const centre = game.floor + view * .18 + Math.sin(clock * 55) * shake * .32;
-    camera.top = centre + view / 2;
-    camera.bottom = centre - view / 2;
-    camera.left = -view * aspect / 2;
-    camera.right = view * aspect / 2;
+    const centre = game.floor + 2.1 + Math.sin(clock * 55) * shake * .3;
+
+    /*
+     * A slow swing around the tower at each split. Deliberately visual only:
+     * the lane index never changes and swipe-left always means the lane that
+     * looks left, because failing from inverted controls is failing at the
+     * input rather than at the game, and that is the one thing this design
+     * spends its whole Playability budget avoiding. Fifteen degrees is enough
+     * to show the tower is a solid volume and never enough to reorder lanes.
+     */
+    orbit += (orbitTarget - orbit) * Math.min(1, dt * 1.6);
+    const r = 13;
+    camera.position.set(
+      Math.sin(orbit) * r + Math.cos(orbit) * 1.4,
+      centre + 1.6 + Math.sin(clock * 55) * shake * .4,
+      Math.cos(orbit) * r);
+    camera.lookAt(0, centre + .4, 0);
+    camera.aspect = rect.width / rect.height;
     camera.updateProjectionMatrix();
+
+    // The shadow camera is small, so the light has to travel with the climber.
+    keyLight.position.set(-6, game.floor + 10, 9);
+    keyLight.target.position.set(0, game.floor, 0);
+    keyLight.target.updateMatrixWorld();
+
+    // The storm lights the wall from below, brighter the closer it is.
+    const gap = Math.max(.001, game.floor - game.storm);
+    stormLight.position.set(0, game.storm + .5, 2.2);
+    stormLight.intensity = Math.max(0, 26 / (gap * gap + 1.2));
   }
 
   function resize() {
     const host = ui.game.parentElement, rect = host.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     renderer.setSize(rect.width, rect.height, false);
+    camera.aspect = rect.width / rect.height;
+    camera.updateProjectionMatrix();
   }
 
   function frame(now) {
@@ -1170,7 +1278,7 @@
       maxHealth: config.health,
       storm: game?.storm, stormGap: (game?.floor ?? 0) - (game?.storm ?? 0),
       stormFraction: game?.stormFraction, climbSpeed: game ? climbSpeed() : 0, peak: game?.peak,
-      multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint,
+      multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint, mirrored: game?.mirrored,
       upgrades: game && { ...game.upgrades }, airJumps: game?.airJumps,
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
@@ -1195,6 +1303,12 @@
     mute: on => { muted = !!on; },
     grant: (id, n = 1) => { game.upgrades[id] = n; sync(); },   // tests need a perk without waiting for a split
     setRecover: n => { game.recover = n; },
+    // Lets a test or a playtester flip the experiment without editing source.
+    laneScreenX: i => laneX(i),      // so a test can assert which side of the screen a lane is on
+    setMirror: (on, compensates = true) => {
+      config.mirrorSplits = !!on;
+      config.mirrorCompensates = !!compensates;
+    },
     clearBest: () => saveBest(0),
     pause: on => { game.paused = !!on; },
     step: (dt, times = 1) => { for (let i = 0; i < times && game.running; i++) tick(dt); },
