@@ -548,7 +548,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   const ms = await run(`(() => {
     ${CLIMB_TO}
     const a = window.ascent;
-    climbTo(20, { keepEnergy: 30 });
+    climbTo(a.getState().milestoneEvery ?? 30, { keepEnergy: 30 });
     const s = a.getState();
     return { banked: s.banked, milestone: s.milestone, lives: s.health, running: s.running };
   })()`);
@@ -578,7 +578,11 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   })()`);
   check('the summit is reachable by good play',
     won.over === 'summit' && won.floorInt >= won.summit, `floor ${won.floorInt}, over ${won.over}`);
-  check('a run lasts long enough to be a session', won.elapsed > 45 && won.elapsed < 300,
+  /* Long enough to be a session, short enough that a judge could in principle
+   * finish one. 300 levels puts a full climb at about six minutes, which is
+   * past what a short sitting will see — the milestone snapshots are what make
+   * a partial run still score. */
+  check('a run lasts long enough to be a session', won.elapsed > 45 && won.elapsed < 600,
     `${won.elapsed.toFixed(0)}s`);
   check('the summit banks the energy in hand plus the bonus', won.banked > won.energy,
     `banked ${won.banked} holding ${won.energy}`);

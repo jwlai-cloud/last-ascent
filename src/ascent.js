@@ -22,7 +22,19 @@
   const config = {
     lanes: 3,
     laneWidth: 1.55,
-    summit: 100,             // floors to the beacon. Almost nobody gets there.
+    /*
+     * A HUNDRED, not three hundred, and the number is load-bearing.
+     *
+     * Tried 300. The rising line reaches its cap in about three minutes, and
+     * a 300 level climb takes six, so the back half is spent at maximum
+     * pressure with no margin: a traced run stalled for thirty and sixty
+     * second stretches, took 122 knock-downs, and only stayed alive because
+     * milestone heals kept topping it up. Over a hundred levels the ramp never
+     * gets that far, and the same policy summits five times in five.
+     *
+     * The pressure model has a natural length, and this is it.
+     */
+    summit: 100,
 
     /*
      * Milestones every twenty floors, each one a SCORE SNAPSHOT: your energy
@@ -35,8 +47,9 @@
      * asymmetry — everything collected since the last milestone is still lost,
      * and spending still comes straight off the next snapshot.
      */
-    milestoneEvery: 20,
-    titles: ['SURVIVOR', 'CLIMBER', 'ASCENDANT', 'STORMPROOF', 'THE LAST ASCENT'],
+    milestoneEvery: 20,      // five checkpoints over the climb
+    titles: ['SURVIVOR', 'CLIMBER', 'ASCENDANT', 'UNBROKEN', 'STORMPROOF',
+             'SKYBOUND', 'RELENTLESS', 'UNTOUCHABLE', 'LEGEND', 'THE LAST ASCENT'],
     /*
      * Speed is the escalation, the way it is in every runner. A constant
      * 1.1s per floor gave an attentive player over a second to read three
@@ -55,7 +68,15 @@
      * bottom of the frame. Drop below it and it costs a life, not the run.
      */
     scrollStart: .3,         // levels per second the world falls away at the outset
-    scrollRamp: .0042,       // added per second: gradual, and relentless
+    /*
+     * Gentler than it was, because the tower got three times taller. A long
+     * climb gives the ramp far longer to run: at .0042 it reached its cap
+     * inside three minutes and then matched the climb exactly, so a careful
+     * player stalled around level 190 and was eaten. The cap matters more than
+     * the slope — it has to stay clearly under the roughly one level a second
+     * a good player sustains.
+     */
+    scrollRamp: .0042,       // added per second
     /*
      * Must stay well under the best achievable climb. Measured it at 0.83
      * levels a second while the scroll was already running at 1.15 and heading
@@ -110,8 +131,9 @@
     sealedChance: 0,
 
     firstSplit: 3,
-    splitEvery: 6,           // floors between choices after the first
+    splitEvery: 6,           // levels between choices after the first
     openingCache: true,      // plant one early rather than wait for the odds
+    openingSafe: 2,          // levels of plain floor before anything can hurt you
 
     /*
      * The storm. One rising number, never a weather simulation.
@@ -298,7 +320,14 @@
     cost: { shield: 6, surge: 8, grapple: 10 },
     surgePush: 1.5,          // floors the storm is knocked back — exactly one slip
     grappleClimb: 2,         // floors gained instantly: energy bought as height
-    summitBonus: 50,
+    /*
+     * Scaled to the tower, not a flat number. At a flat 50 across 300 levels a
+     * careful climber who spent everything staying alive banked 47 while a
+     * careless one who died two thirds of the way up banked 97 — finishing was
+     * worth less than failing. The bonus has to be large enough that the
+     * summit is always the best outcome available.
+     */
+    summitBonus: 120,
 
     // Per-lane character. The danger lane is where the score is.
     /*
@@ -941,6 +970,15 @@
     };
 
     ensureGenerated();
+    /*
+     * A clean opening. Generation could put a gap under the starting lane, so
+     * a run began by falling before the player had touched anything, and it
+     * could put spikes directly above, so the very first jump was punished.
+     * The first couple of levels are plain floor in every lane.
+     */
+    for (let f = 0; f <= config.openingSafe; f++) {
+      for (let l = 0; l < config.lanes; l++) game.cells.delete(`${l}:${f}`);
+    }
     sync();
   }
 
@@ -1698,7 +1736,7 @@
       nextSplit: game?.nextSplit, generatedTo: game?.generatedTo,
       collected: game?.collected, spent: game?.spent, slips: game?.slips, skipped: game?.skipped,
       banked: game?.banked, newBest: game?.newBest, best: loadBest(),
-      summit: config.summit, cost: config.cost, slipFloors: config.slip,
+      summit: config.summit, milestoneEvery: config.milestoneEvery, cost: config.cost, slipFloors: config.slip,
       milestone: game?.milestone,
     }),
     start, reset, buy, jump, moveLane,

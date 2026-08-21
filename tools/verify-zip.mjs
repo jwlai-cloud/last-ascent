@@ -96,9 +96,16 @@ const opening = await page.evaluate(() => window.ascent.getState());
 check('the world falls away on its own', opening.running && opening.storm > -5,
   `sight line ${opening.storm.toFixed(2)}, gap ${opening.stormGap.toFixed(1)}`);
 {
+  // Wait until he is actually standing, or the press lands mid-fall.
+  await page.waitForFunction(() => window.ascent.getState().grounded, null, { timeout: 5000 });
+  // Clear the level above, so this tests the input rather than the level design.
+  await page.evaluate(() => {
+    const a = window.ascent, s = a.getState();
+    a.setCell(s.lane, Math.floor(s.floor) + 1, null);
+  });
   const before = await page.evaluate(() => window.ascent.getState().floor);
   await page.keyboard.press('Space');
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
   const after = await page.evaluate(() => window.ascent.getState().floor);
   check('a real space press climbs a level', after > before, `floor ${before.toFixed(2)} -> ${after.toFixed(2)}`);
 }
