@@ -288,7 +288,7 @@
      * pulls from the next lane, so the right move is to dive toward the storm
      * and sweep. It is loudest exactly where it is most dangerous.
      */
-    cacheChance: .05,        // per cell, and only on the richer routes
+    cacheChance: .03,        // per cell, and only on the richer routes
     cacheTime: 8,            // seconds it burns
     cacheMult: 2,            // multiplies the risk band while it lasts
 
@@ -342,7 +342,9 @@
      * progress. "Heal" was cut with the health pips; a second way to undo a
      * slip would have done the same job as surge.
      */
-    cost: { shield: 6, surge: 8, grapple: 10 },
+/* Dearer, because energy is scarcer and a bonus that is always affordable is
+     * not a decision. */
+    cost: { shield: 9, surge: 12, grapple: 15 },
     surgePush: 1.5,          // floors the storm is knocked back — exactly one slip
     grappleClimb: 2,         // floors gained instantly: energy bought as height
     /*
@@ -390,9 +392,19 @@
      * tower and a sweep measures what ships.
      */
     routes: {
-      SAFE:    { energy: .16, hazard: .07, gap: .05 },
-      DANGER:  { energy: .42, hazard: .36, gap: .23 },
-      UNKNOWN: { energy: .30, hazard: .22, gap: .14 },   // placeholder; derived per section
+     /*
+      * Sat at the edge of winnable. A sweep found a cliff: at DANGER hazard
+      * .34 a scripted careful climber summits none of ten and dies around
+      * level 98; at .30 it summits five. .32 is the last rung that still
+      * clears the floor, at two in twelve.
+      *
+      * That bot is a markedly weaker player than a person, so this is not the
+      * difficulty a human will feel — it is the point past which the tower
+      * stops being beatable at all.
+      */
+      SAFE:    { energy: .13, hazard: .06, gap: .04 },
+      DANGER:  { energy: .32, hazard: .32, gap: .20 },
+      UNKNOWN: { energy: .22, hazard: .19, gap: .12 },   // placeholder; derived per section
     },
 
     /*
@@ -407,8 +419,8 @@
      * Ramped, the bottom of the tower is survivable while you learn the beat
      * and the top is genuinely dense.
      */
-    dangerFloor: .45,        // multiplier on hazards and gaps at level zero
-    dangerCeiling: 1.55,     // and at the summit
+    dangerFloor: .30,        // multiplier on hazards and gaps at level zero
+    dangerCeiling: 1.9,      // and at the summit — the top is meant to be nasty
   };
 
   const colors = {
