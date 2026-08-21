@@ -18,7 +18,7 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 .stat.floor{min-width:3.2em}
 .stat.floor .row{display:flex;align-items:baseline;gap:.08em}
 .stat.energy strong{color:var(--energy)}
-.health{letter-spacing:.02em;color:var(--danger)}
+.health{letter-spacing:-.02em;color:var(--danger);font-size:.9em}
 .health.critical{animation:throb .6s ease-in-out infinite}
 .stat.best{margin-left:auto}
 .stat.best strong{color:var(--beacon)}
@@ -77,6 +77,10 @@ button{font:inherit;touch-action:manipulation;color:inherit}
 .pick.chosen b{color:var(--energy)}
 
 /* The turn warning owns the middle of the screen while it counts down. */
+/* Sits at the foot of the arena, in the player's eyeline while they steer. */
+.orient{position:absolute;right:.5em;bottom:.6em;padding:.28em .45em;border-radius:.35em;background:rgba(10,15,28,.82);border:1px solid #3a456b;color:#8e9cc4;font-size:.44em;font-weight:1000;letter-spacing:.12em;white-space:nowrap;pointer-events:none}
+.orient.mirrored{border-color:var(--beacon);background:rgba(60,45,12,.9);color:var(--beacon);animation:turnpulse 1.1s ease-in-out infinite}
+
 .cache-chip{position:absolute;top:6.2em;left:50%;transform:translateX(-50%);padding:.3em .55em;border-radius:.35em;background:var(--cache);color:#2a1d02;font-size:.5em;font-weight:1000;letter-spacing:.08em;white-space:nowrap;pointer-events:none;animation:turnpulse .5s ease-in-out infinite}
 .route-hint.cache{color:#2a1d02;background:var(--cache)}
 

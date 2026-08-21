@@ -212,7 +212,8 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   await fresh();
   const dead = await run(() => {
     const a = window.ascent;
-    for (let i = 0; i < 6 && a.getState().running; i++) {
+    a.setStorm(-500);                    // isolate lives from the storm
+    for (let i = 0; i < 14 && a.getState().running; i++) {
       const st = a.getState();
       a.setCell(st.lane, Math.floor(st.floor) + 1, 'hazard');
       a.step(0.05, 60);
@@ -371,6 +372,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     a.setCell(a.getState().lane, Math.floor(a.getState().floor) + 1, 'hazard');
     a.step(0.05, 60);
     out.afterHit = { lives: a.getState().health, shield: a.getState().shield, slips: a.getState().slips };
+    out.maxHealth = a.getState().maxHealth;
 
     const gapBefore = a.getState().stormGap;
     a.buy('surge');
@@ -386,7 +388,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     return out;
   });
   check('SHIELD absorbs a hit instead of a life',
-    spends.shielded && spends.afterHit.lives === 3 && spends.afterHit.slips === 0 && !spends.afterHit.shield,
+    spends.shielded && spends.afterHit.lives === spends.maxHealth && spends.afterHit.slips === 0 && !spends.afterHit.shield,
     JSON.stringify(spends.afterHit));
   check('SURGE pushes the storm back', spends.surgeGain > 1, `gap +${spends.surgeGain}`);
   check('GRAPPLE buys height directly', spends.grappleGain >= 2, `+${spends.grappleGain} floors`);
@@ -456,13 +458,16 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
       const st = a.getState();
       const next = Math.floor(st.floor) + 1;
       const clear = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, next)));
-      const want = clear.length ? clear[0] : st.lane;
+      const rich = clear.filter(l => ['energy', 'cache'].includes(a.cellAt(l, next)));
+      const want = rich.length ? rich[0] : (clear.length ? clear[0] : st.lane);
       if (want !== st.lane) a.moveLane(Math.sign(want - st.lane));
+      // A clean player also spends; the storm outpaces a climb that never does.
+      if (st.stormGap < 1.6 && st.energy >= st.cost.surge) a.buy('surge');
       a.step(0.05); n++;
     }
     return { ...a.getState(), seconds: n * 0.05 };
   });
-  check('the summit is reachable by clean play',
+  check('the summit is reachable by clean play that spends',
     won.over === 'summit' && won.floorInt >= won.summit, `floor ${won.floorInt}, over ${won.over}`);
   check('a run lasts long enough to be a session', won.seconds > 60 && won.seconds < 240,
     `${won.seconds.toFixed(0)}s`);
@@ -565,40 +570,71 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     return { before, after: { mirrored: a.getState().mirrored, x1: a.laneScreenX(0) }, phase: a.getState().flipPhase };
   });
   check('the turn completes and settles', turned.phase === null, `phase ${turned.phase}`);
-  check('a turn past edge-on puts lane 0 on the other side of the screen',
-    turned.before.swaps ? turned.after.x1 === -turned.before.x1 : turned.after.x1 === turned.before.x1,
-    `swaps ${turned.before.swaps}: screen x ${turned.before.x1} -> ${turned.after.x1}`);
+  check('lanes stay where they are on screen — only their contents move',
+    turned.after.x1 === turned.before.x1,
+    `lane 0 screen x ${turned.before.x1} -> ${turned.after.x1}`);
 
-  /* Nothing about the grid may move. The turn is a camera and a mapping; the
-   * simulation must be identical either way. */
-  const unchanged = await run(() => {
+  /*
+   * The turn mirrors THE TOWER ABOVE the climber and leaves everything else
+   * alone. The first version mirrored the drawing, which moved the climber too
+   * — and mirroring the whole scene is relationally a no-op, so nothing
+   * changed except that the controls felt inverted. Reported as "lane
+   * composition still the same, only key direction flip".
+   */
+  const swap = await run(() => {
     const a = window.ascent;
+    a.start(3); a.pause(true); a.mute(true); a.setFlip(1, false);
     const st = a.getState();
-    const cellsBefore = [0, 1, 2].map(l => a.cellAt(l, Math.floor(st.floor) + 2));
+    const above = Math.floor(st.floor) + 6, below = Math.max(0, Math.floor(st.floor) - 1);
+    const beforeAbove = [0, 1, 2].map(l => a.cellAt(l, above));
+    const beforeBelow = [0, 1, 2].map(l => a.cellAt(l, below));
     a.forceFlip();
-    for (let i = 0; i < 200 && a.getState().flipPhase; i++) a.step(0.05);
-    const cellsAfter = [0, 1, 2].map(l => a.cellAt(l, Math.floor(st.floor) + 2));
-    return { cellsBefore, cellsAfter, lane: st.lane, laneAfter: a.getState().lane };
+    for (let i = 0; i < 400 && a.getState().flipPhase; i++) a.step(0.05);
+    return {
+      swaps: st.flipSwaps,
+      beforeAbove, afterAbove: [0, 1, 2].map(l => a.cellAt(l, above)),
+      beforeBelow, afterBelow: [0, 1, 2].map(l => a.cellAt(l, below)),
+      lane: st.lane, laneAfter: a.getState().lane,
+    };
   });
-  check('a turn does not touch the grid or move the climber between lanes',
-    JSON.stringify(unchanged.cellsBefore) === JSON.stringify(unchanged.cellsAfter),
-    `${JSON.stringify(unchanged.cellsBefore)} vs ${JSON.stringify(unchanged.cellsAfter)}`);
+  check('a reversing turn mirrors the lane contents above you',
+    JSON.stringify(swap.afterAbove) === JSON.stringify(swap.beforeAbove.slice().reverse()),
+    `${JSON.stringify(swap.beforeAbove)} -> ${JSON.stringify(swap.afterAbove)}`);
+  check('floors already passed are left alone',
+    JSON.stringify(swap.afterBelow) === JSON.stringify(swap.beforeBelow),
+    `${JSON.stringify(swap.beforeBelow)} -> ${JSON.stringify(swap.afterBelow)}`);
+  check('the climber does not change lane',
+    swap.lane === swap.laneAfter, `lane ${swap.lane} -> ${swap.laneAfter}`);
 
-  // And the compensating variant keeps a swipe screen-honest.
-  const compensated = await run(() => {
+  /* Controls are untouched by default — the tower moved, not the player. The
+   * opt-in variant inverts them as well, for anyone who wants that too. */
+  const normal = await run(() => {
     const a = window.ascent;
-    a.start(5); a.pause(true); a.mute(true);
-    a.setFlip(1, true);
+    a.start(5); a.pause(true); a.mute(true); a.setFlip(1, false);
     a.forceFlip();
-    for (let i = 0; i < 300 && a.getState().flipPhase; i++) a.step(0.05);
+    for (let i = 0; i < 400 && a.getState().flipPhase; i++) a.step(0.05);
     for (let i = 0; i < 8 && a.getState().lane !== 1; i++) a.moveLane(a.getState().lane > 1 ? 1 : -1);
-    const x0 = a.laneScreenX(a.getState().lane);
+    const before = a.getState().lane;
     a.moveLane(1);
-    return { mirrored: a.getState().mirrored, x0, x1: a.laneScreenX(a.getState().lane) };
+    return { mirrored: a.getState().mirrored, before, after: a.getState().lane };
   });
-  check('with compensation on, a swipe still moves the way you swiped',
-    compensated.x1 > compensated.x0,
-    `mirrored ${compensated.mirrored}, screen x ${compensated.x0} -> ${compensated.x1}`);
+  check('a turn does not invert the controls by default',
+    normal.mirrored === true && normal.after === normal.before + 1,
+    `mirrored ${normal.mirrored}, lane ${normal.before} -> ${normal.after}`);
+
+  const inverted = await run(() => {
+    const a = window.ascent;
+    a.start(5); a.pause(true); a.mute(true); a.setFlip(1, true);
+    a.forceFlip();
+    for (let i = 0; i < 400 && a.getState().flipPhase; i++) a.step(0.05);
+    for (let i = 0; i < 8 && a.getState().lane !== 1; i++) a.moveLane(a.getState().lane > 1 ? -1 : 1);
+    const before = a.getState().lane;
+    a.moveLane(1);
+    return { mirrored: a.getState().mirrored, before, after: a.getState().lane };
+  });
+  check('the opt-in variant does invert them',
+    !inverted.mirrored || inverted.after === inverted.before - 1,
+    `mirrored ${inverted.mirrored}, lane ${inverted.before} -> ${inverted.after}`);
 
   await run(() => window.ascent.setFlip(0.55, false));
 }
@@ -670,9 +706,9 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   check('after a turn, every prop sits where its lane now is',
     desync.after.every((x, l) => Math.abs(x - desync.lanes[l]) < 0.001),
     `props ${JSON.stringify(desync.after)} vs lanes ${JSON.stringify(desync.lanes)}`);
-  check('a reversing turn actually moved the props',
-    !desync.mirrored || desync.after[0] !== desync.before[0],
-    `mirrored ${desync.mirrored}, lane 0 x ${desync.before[0]} -> ${desync.after[0]}`);
+  check('lanes are redrawn in place after a turn',
+    desync.after.every((x, l) => x === desync.before[l]),
+    `lane x ${JSON.stringify(desync.before)} -> ${JSON.stringify(desync.after)}`);
   await run(() => window.ascent.setFlip(0.55, false));
 }
 

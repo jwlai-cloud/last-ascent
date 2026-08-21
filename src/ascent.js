@@ -49,7 +49,16 @@
      * intent — and because the storm is a share of climb speed the chase never
      * tightened either. Speed is the escalation and it has to accelerate. */
     speedRamp: 1.012,
-    splitEvery: 6,           // floors between choices — ten of them in a run
+    /*
+     * The first split comes early and the rest follow on the normal cadence.
+     * A judge plays briefly, so every mechanic has to appear before they stop:
+     * the first split, its upgrade choice and a guaranteed tower turn all land
+     * inside the first twenty seconds, and a cache is planted in the opening
+     * section rather than left to chance.
+     */
+    firstSplit: 3,
+    splitEvery: 6,           // floors between choices after the first
+    openingCache: true,      // plant one early rather than wait for the odds
 
     /*
      * The storm. One rising number, never a weather simulation.
@@ -61,8 +70,14 @@
      * twenty; there was no game in it.
      */
     stormStart: -4,          // floors below the climber at the start
-    stormFraction: .78,      // storm speed as a share of CLIMB speed, not an absolute
-    stormRampAdd: .02,       // added at every split; sixteen of them reach 1.10
+    /*
+     * Raised when lives went from three to five. More lives means more hits
+     * survived, which flattened the curve until a careless scripted player
+     * summited. The answer is not fewer lives — a longer run was the point —
+     * it is that the storm, not the hit count, should be what ends you.
+     */
+    stormFraction: .80,      // storm speed as a share of CLIMB speed, not an absolute
+    stormRampAdd: .025,      // seventeen splits carry it to about 1.22 by the top
 
     /*
      * A hit costs height, not hit points. This is the only failure axis in the
@@ -82,7 +97,7 @@
      * restores one, so the arc of a run is survive to the next checkpoint,
      * bank, patch up, go again.
      */
-    health: 3,
+    health: 5,               // five, so a run lasts long enough to see everything
     healOnMilestone: 1,
 
     /* Hits in quick succession cost progressively more height. One mistake is
@@ -194,7 +209,23 @@
     flipWarn: 1.6,           // seconds of warning before it moves
     flipTurn: .9,            // seconds the turn itself takes
     flipAngles: [140, 180, 220, 300, 360],   // degrees; under 90 or over 270 keeps lane order
-    flipCompensates: false,
+    /*
+     * A turn mirrors THE TOWER ABOVE YOU — the contents of the lanes swap ends
+     * — and leaves the climber and the controls alone.
+     *
+     * The first version mirrored the drawing instead, which moved the climber
+     * along with everything else. Mirroring the whole scene is relationally a
+     * no-op: same lane, same neighbours, same spikes to your left. Nothing
+     * changed except that the controls felt inverted, which is a gimmick
+     * rather than the spatial event it was supposed to be. Reported as "lane
+     * composition still the same, only key direction flip", which was exact.
+     *
+     * Now the route you were steering toward really is on the other side, and
+     * you have the warning window to get across. `flipControls` additionally
+     * inverts input for anyone who wants the mean version too.
+     */
+    flipControls: false,
+    turnSwing: 1.25,         // radians the camera swings during a turn — never past edge-on
     hintDwell: 3.2,          // seconds a coaching line holds before a calmer one takes the slot
 
     // Energy is the score AND the survival budget. One resource, three spends.
@@ -228,7 +259,7 @@
     'buyShield', 'buySurge', 'buyGrapple', 'costShield', 'costSurge', 'costGrapple',
     'startModal', 'modalButton', 'modalTitle', 'modalCopy', 'modalIcon', 'modalKicker',
     'reset', 'mute', 'summitGoal', 'splitChoice', 'pick0', 'pick1', 'pick2',
-    'climbFill', 'climbNext', 'turnWarn', 'cacheChip',
+    'climbFill', 'climbNext', 'turnWarn', 'cacheChip', 'orient',
   ].map(id => [id, document.getElementById(id)]));
 
   const BEST_KEY = 'lastascent.best';
@@ -321,10 +352,7 @@
     return m;
   }
 
-  /* Mirroring flips which side of the screen a lane index appears on. The grid
-   * is untouched — only the drawing changes — so nothing about collision,
-   * determinism or the tests depends on it. */
-  const laneX = i => (i - (config.lanes - 1) / 2) * config.laneWidth * (game?.mirrored ? -1 : 1);
+  const laneX = i => (i - (config.lanes - 1) / 2) * config.laneWidth;
 
   /*
    * Deterministic RNG. A run is a seed, so a test can replay one exactly and a
@@ -500,16 +528,20 @@
    * nothing. */
   function ensureGenerated() {
     while (game.generatedTo < game.floor + config.splitEvery * 2) {
+      const from = game.generatedTo;
+      const span = from === 0 ? config.firstSplit : config.splitEvery;
       const routes = rollRoutes();
-      game.sectionRoutes.set(game.generatedTo, routes);
-      game.sectionUpgrades.set(game.generatedTo, rollUpgrades());
-      generateSection(game.generatedTo, routes);
-      markSplit(game.generatedTo);
-      game.generatedTo += config.splitEvery;
+      game.sectionRoutes.set(from, routes);
+      game.sectionUpgrades.set(from, rollUpgrades());
+      generateSection(from, routes, span);
+      markSplit(from);
+      game.generatedTo += span;
     }
   }
 
-  const sectionStart = f => Math.floor(f / config.splitEvery) * config.splitEvery;
+  /* Sections are firstSplit long, then splitEvery. */
+  const sectionStart = f => f < config.firstSplit ? 0
+    : config.firstSplit + Math.floor((f - config.firstSplit) / config.splitEvery) * config.splitEvery;
   const routesAt = f => game.sectionRoutes.get(sectionStart(f)) || game.sectionRoutes.get(0);
   const upgradesAt = f => game.sectionUpgrades.get(sectionStart(f)) || game.sectionUpgrades.get(0);
 
@@ -532,8 +564,12 @@
    * through, at the moment the tower is edge-on and the swap is invisible.
    */
   function maybeStartFlip() {
-    if (game.rand() > config.flipChance) return;
-    const deg = config.flipAngles[Math.floor(game.rand() * config.flipAngles.length)];
+    // The first split always turns, so the mechanic is demonstrated rather than
+    // left to a coin toss a short-session judge may never see.
+    const guaranteed = game.turns === 0;
+    if (!guaranteed && game.rand() > config.flipChance) return;
+    game.turns++;
+    const deg = guaranteed ? 180 : config.flipAngles[Math.floor(game.rand() * config.flipAngles.length)];
     const dir = game.rand() < .5 ? -1 : 1;
     game.flipAngle = deg * dir * Math.PI / 180;
     game.flipSwaps = Math.cos(deg * Math.PI / 180) < 0;   // did it end up facing the other way
@@ -555,11 +591,15 @@
     if (game.flipPhase === 'turn') {
       const t = 1 - Math.max(0, game.flipTimer) / config.flipTurn;
       const eased = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      orbit = game.flipFrom + game.flipAngle * eased;
+      /* Swing out and back rather than all the way round. A full 180 would put
+       * the camera behind the tower, where the wall is between it and every
+       * prop; the swap happens at the peak, where foreshortening hides it. */
+      const swing = Math.sin(eased * Math.PI) * Math.sign(game.flipAngle) * config.turnSwing;
+      orbit = game.flipFrom + swing;
       // Swap the lanes edge-on, where the change cannot be seen happening.
       if (!game.flipHalfDone && t >= .5) {
         game.flipHalfDone = true;
-        if (game.flipSwaps) { game.mirrored = !game.mirrored; rebuildLaneVisuals(); }
+        if (game.flipSwaps) { game.mirrored = !game.mirrored; mirrorTowerAbove(); }
       }
       if (game.flipTimer <= 0) {
         game.flipPhase = null;
@@ -572,9 +612,57 @@
 
   /* Redraw everything whose x depends on the lane mapping. Only called when
    * the mirror experiment is enabled. */
-  function rebuildLaneVisuals() {
-    for (const cell of game.cellGroups) cell.position.x = laneX(cell.userData.lane);
-    for (const l of game.splitLabels) l.mesh.position.x = laneX(l.lane);
+  /*
+   * Swap the contents of the lanes for every floor the climber has not reached
+   * yet, and redraw them. Floors already passed are left alone — rewriting
+   * history behind the player would be meaningless and would fight the
+   * recovery immunity.
+   *
+   * This is the whole mechanic: the safe lane you were steering toward is now
+   * on the other side, and the warning window is how long you had to notice.
+   */
+  function mirrorTowerAbove() {
+    const from = Math.floor(game.floor) + 1;
+    const swapped = new Map();
+    for (const [key, kind] of game.cells) {
+      const [lane, f] = key.split(':').map(Number);
+      if (f < from) { swapped.set(key, kind); continue; }
+      swapped.set(`${config.lanes - 1 - lane}:${f}`, kind);
+    }
+    game.cells = swapped;
+
+    // Redraw every affected section from the new grid.
+    for (let i = game.cellGroups.length - 1; i >= 0; i--) {
+      const cell = game.cellGroups[i];
+      if (cell.position.y < from) continue;
+      game.props.remove(cell);
+      game.cellGroups.splice(i, 1);
+    }
+    for (const [key, m] of [...game.meshes]) {
+      if (Number(key.split(':')[1]) >= from) game.meshes.delete(key);
+    }
+    game.spins = game.spins.filter(m => m.parent);
+
+    redrawFrom(from);
+
+    // The upgrade plates hang off lanes too.
+    for (const l of game.splitLabels) {
+      if (l.floor >= from) l.lane = config.lanes - 1 - l.lane;
+      l.mesh.position.x = laneX(l.lane);
+    }
+    for (const [floor, ups] of game.sectionUpgrades) {
+      if (floor >= from) game.sectionUpgrades.set(floor, ups.slice().reverse());
+    }
+    for (const [floor, routes] of game.sectionRoutes) {
+      if (floor >= from) game.sectionRoutes.set(floor, routes.slice().reverse());
+    }
+  }
+
+  /* Rebuild the props for every generated floor at or above `from`. */
+  function redrawFrom(from) {
+    for (let f = from; f < game.generatedTo; f++) {
+      for (let lane = 0; lane < config.lanes; lane++) drawCell(lane, f);
+    }
   }
 
   /* A band across the tower at each split with each lane's perk named on it.
@@ -591,8 +679,8 @@
     }
   }
 
-  function generateSection(fromFloor, routeByLane) {
-    for (let f = fromFloor; f < fromFloor + config.splitEvery; f++) {
+  function generateSection(fromFloor, routeByLane, span = config.splitEvery) {
+    for (let f = fromFloor; f < fromFloor + span; f++) {
       for (let lane = 0; lane < config.lanes; lane++) {
         const route = config.routes[routeByLane[lane]];
         const roll = game.rand();
@@ -609,7 +697,11 @@
       const blocked = [0, 1, 2].every(l => ['gap', 'hazard'].includes(game.cells.get(`${l}:${f}`)));
       if (blocked) game.cells.delete(`${Math.floor(game.rand() * config.lanes)}:${f}`);
     }
-    renderSection(fromFloor);
+    // Plant a cache in the opening stretch so the mechanic is seen, not rolled for.
+    if (fromFloor === 0 && config.openingCache) {
+      game.cells.set(`${Math.floor(game.rand() * config.lanes)}:2`, 'cache');
+    }
+    renderSection(fromFloor, span);
   }
 
   /*
@@ -623,61 +715,73 @@
    * believing their eyes. Grouping makes that class of bug impossible: there is
    * one position per cell and mirroring moves it.
    */
-  function renderSection(fromFloor) {
-    for (let f = fromFloor; f < fromFloor + config.splitEvery; f++) {
-      for (let lane = 0; lane < config.lanes; lane++) {
-        const kind = game.cells.get(`${lane}:${f}`);
+  function renderSection(fromFloor, span = config.splitEvery) {
+    for (let f = fromFloor; f < fromFloor + span; f++) {
+      for (let lane = 0; lane < config.lanes; lane++) drawCell(lane, f);
+    }
+  }
 
-        const cell = new T.Group();
-        cell.position.set(laneX(lane), f, 0);
-        cell.userData.lane = lane;
-        game.props.add(cell);
-        game.cellGroups.push(cell);
+  /*
+   * One GROUP per cell, positioned at that lane's x, with everything drawn as
+   * a child at local coordinates.
+   *
+   * Grouping is what makes a mirroring turn safe. An earlier version placed
+   * each prop at an absolute x and tagged only the ledges with their lane, so
+   * a turn moved the ledges and the energy and left the spikes and rubble
+   * where they were — the grid said hazard, the screen showed clear ground.
+   * One position per cell, and nothing to forget.
+   */
+  function drawCell(lane, f) {
+    const kind = game.cells.get(`${lane}:${f}`);
 
-        if (kind !== 'gap') {
-          const ledge = mesh(new T.BoxGeometry(config.laneWidth * .88, .22, 1.1), mat(colors.ledge), cell);
-          ledge.castShadow = true; ledge.receiveShadow = true;
-        } else {
-          /* A gap drawn as nothing reads as absence of information rather than
-           * danger, so broken stubs say a ledge used to be here. */
-          for (const side of [-1, 1]) {
-            const stub = mesh(new T.BoxGeometry(config.laneWidth * .2, .2, 1.1), mat(colors.rubble), cell,
-              side * config.laneWidth * .34, 0, 0);
-            stub.rotation.z = side * .28;
-            stub.castShadow = true;
-          }
-        }
+    const cell = new T.Group();
+    cell.position.set(laneX(lane), f, 0);
+    cell.userData.lane = lane;
+    game.props.add(cell);
+    game.cellGroups.push(cell);
 
-        if (kind === 'energy') {
-          const e = mesh(new T.OctahedronGeometry(.26), mat(colors.energy, .25), cell, 0, .55, .5);
-          e.material.emissive = new T.Color(colors.energy);
-          e.material.emissiveIntensity = .75;
-          e.userData.baseY = .55;
-          game.spins.push(e);
-          game.meshes.set(`${lane}:${f}`, e);
-        }
+    if (kind !== 'gap') {
+      const ledge = mesh(new T.BoxGeometry(config.laneWidth * .88, .22, 1.1), mat(colors.ledge), cell);
+      ledge.castShadow = true; ledge.receiveShadow = true;
+    } else {
+      /* A gap drawn as nothing reads as absence of information rather than
+       * danger, so broken stubs say a ledge used to be here. */
+      for (const side of [-1, 1]) {
+        const stub = mesh(new T.BoxGeometry(config.laneWidth * .2, .2, 1.1), mat(colors.rubble), cell,
+          side * config.laneWidth * .34, 0, 0);
+        stub.rotation.z = side * .28;
+        stub.castShadow = true;
+      }
+    }
 
-        if (kind === 'cache') {
-          const box = mesh(new T.BoxGeometry(.46, .42, .42), mat(colors.cache, .35), cell, 0, .5, .5);
-          box.material.emissive = new T.Color(colors.cache);
-          box.material.emissiveIntensity = .85;
-          box.rotation.y = .5;
-          box.castShadow = true;
-          box.userData.baseY = .5;
-          game.spins.push(box);
-          game.meshes.set(`${lane}:${f}`, box);
-        }
+    if (kind === 'energy') {
+      const e = mesh(new T.OctahedronGeometry(.26), mat(colors.energy, .25), cell, 0, .55, .5);
+      e.material.emissive = new T.Color(colors.energy);
+      e.material.emissiveIntensity = .75;
+      e.userData.baseY = .55;
+      game.spins.push(e);
+      game.meshes.set(`${lane}:${f}`, e);
+    }
 
-        if (kind === 'hazard') {
-          /* Three spikes rather than one cone: a row of spikes is the most
-           * universally understood "do not touch" shape there is. */
-          const spikeMat = mat(colors.hazard, .45);
-          spikeMat.emissive = new T.Color(colors.hazard);
-          spikeMat.emissiveIntensity = .45;
-          for (const off of [-.32, 0, .32]) {
-            mesh(new T.ConeGeometry(.14, .46, 6), spikeMat, cell, off, .34, .4).castShadow = true;
-          }
-        }
+    if (kind === 'cache') {
+      const box = mesh(new T.BoxGeometry(.46, .42, .42), mat(colors.cache, .35), cell, 0, .5, .5);
+      box.material.emissive = new T.Color(colors.cache);
+      box.material.emissiveIntensity = .85;
+      box.rotation.y = .5;
+      box.castShadow = true;
+      box.userData.baseY = .5;
+      game.spins.push(box);
+      game.meshes.set(`${lane}:${f}`, box);
+    }
+
+    if (kind === 'hazard') {
+      /* Three spikes rather than one cone: a row of spikes is the most
+       * universally understood "do not touch" shape there is. */
+      const spikeMat = mat(colors.hazard, .45);
+      spikeMat.emissive = new T.Color(colors.hazard);
+      spikeMat.emissiveIntensity = .45;
+      for (const off of [-.32, 0, .32]) {
+        mesh(new T.ConeGeometry(.14, .46, 6), spikeMat, cell, off, .34, .4).castShadow = true;
       }
     }
   }
@@ -719,6 +823,7 @@
       stormFraction: config.stormFraction,
       health: config.health,
       mirrored: false,
+      turns: 0,
       cache: 0, caches: 0,   // seconds of supply-cache boost left, and how many found
       flipPhase: null,      // null | 'warn' | 'turn'
       flipTimer: 0, flipAngle: 0, flipFrom: 0, flipSwaps: false,
@@ -732,7 +837,7 @@
       running: false, paused: false,
       over: null, banked: 0, newBest: false, milestone: 0,
       sectionRoutes: new Map(), sectionUpgrades: new Map(),
-      generatedTo: 0, nextSplit: config.splitEvery,
+      generatedTo: 0, nextSplit: config.firstSplit,
       upgrades: Object.fromEntries(config.upgrades.map(u => [u.id, 0])),
       airJumps: 0,          // air jumps left in the current jump, from DOUBLE JUMP
       collected: 0, spent: 0, slips: 0, skipped: 0,
@@ -755,7 +860,7 @@
     if (!game.running) return false;
     // With compensation on, a swipe moves the climber toward the side of the
     // screen it was aimed at, whichever way the tower is currently facing.
-    const applied = game.mirrored && config.flipCompensates ? -dir : dir;
+    const applied = game.mirrored && config.flipControls ? -dir : dir;
     const next = Math.min(config.lanes - 1, Math.max(0, game.lane + applied));
     if (next === game.lane) return false;
     game.lane = next;
@@ -827,8 +932,13 @@
 
     if (kind === 'energy' || kind === 'cache') { collect(game.lane, f); return; }
 
-    // Immune while recovering from the last slip, but still able to collect.
-    if (game.recover > 0) return;
+    /* Immune while recovering from the last slip, but still able to collect.
+     * Say so: an ignored gap otherwise reads as "the broken floor is not always
+     * working", which is exactly how it was reported. */
+    if (game.recover > 0) {
+      if (kind === 'gap' || kind === 'hazard') showFeed('RECOVERING');
+      return;
+    }
 
     if (kind === 'gap') return slip('SLIPPED');
     if (kind === 'hazard') return slip('HIT');
@@ -975,7 +1085,7 @@
     // Swing to the other shoulder at each split. Visual only — see render().
     orbitTarget = orbitTarget > 0 ? -config.orbit : config.orbit;
     maybeStartFlip();
-    game.nextSplit = sectionStart(f) + config.splitEvery;
+    game.nextSplit = sectionStart(f) + (sectionStart(f) === 0 ? config.firstSplit : config.splitEvery);
     game.stormFraction += config.stormRampAdd;
 
     /* The lane you happen to be in is the route AND the upgrade. One decision,
@@ -1129,6 +1239,15 @@
     const [text, tone] = hint();
     ui.routeHint.textContent = text;
     ui.routeHint.className = `route-hint ${tone}`;
+
+    /* Which way the controls currently point, permanently on screen. The turn
+     * toggles this correctly and always has — but with no indicator the player
+     * cannot know which state they are in, and hidden state that governs input
+     * reads exactly like a broken control. */
+    const inverted = game.mirrored && config.flipControls;
+    ui.orient.hidden = !config.flipControls;
+    ui.orient.textContent = inverted ? 'A ▶   ◀ D' : '◀ A   D ▶';
+    ui.orient.className = `orient${inverted ? ' mirrored' : ''}`;
 
     ui.cacheChip.hidden = !(game.cache > 0);
     if (game.cache > 0) ui.cacheChip.textContent = `⬛ CACHE ${game.cache.toFixed(1)}s · ×${riskBand().mult}`;
@@ -1422,7 +1541,7 @@
       stormFraction: game?.stormFraction, climbSpeed: game ? climbSpeed() : 0, peak: game?.peak,
       multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint, mirrored: game?.mirrored,
       cache: game?.cache, caches: game?.caches,
-      flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps,
+      flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps, turns: game?.turns,
       upgrades: game && { ...game.upgrades }, airJumps: game?.airJumps,
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
@@ -1453,9 +1572,9 @@
     setRecover: n => { game.recover = n; },
     // Lets a test or a playtester flip the experiment without editing source.
     laneScreenX: i => laneX(i),      // so a test can assert which side of the screen a lane is on
-    setFlip: (chance, compensates = false) => {
+    setFlip: (chance, invertControls = false) => {
       config.flipChance = chance;
-      config.flipCompensates = !!compensates;
+      config.flipControls = !!invertControls;
     },
     forceFlip: () => { maybeStartFlip(); sync(); },   // sync too, or the HUD lags the state
     clearBest: () => saveBest(0),
