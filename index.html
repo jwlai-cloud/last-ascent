@@ -10,7 +10,7 @@
   <body>
     <main class="game-shell" aria-label="The Last Ascent climbing game">
       <header class="hud">
-        <div class="stat floor"><small>FLOOR</small><span class="row"><strong id="floor">0</strong><em>/<span id="summitGoal">100</span></em></span></div>
+        <div class="stat floor"><small>FLOOR</small><span class="row"><strong id="floor">0</strong><em>/<span id="summitGoal">300</span></em></span></div>
         <div class="stat energy"><small>ENERGY</small><strong id="energy">0</strong></div>
         <div class="stat"><small>LIVES</small><strong id="health" class="stat-value health">♥♥♥</strong></div>
         <div class="stat best"><small>BEST</small><strong id="best">0</strong></div>
@@ -32,7 +32,7 @@
         <!-- The gap and the multiplier are the same decision, so they are the
              same widget: energy pays more the closer the storm is. -->
         <div class="storm-pill" aria-live="polite"><span>STORM</span><b id="stormGap">4.0</b><span>below</span><i class="multiplier" id="multiplier">×1</i></div>
-        <div class="route-hint" id="routeHint">Swipe to change lane · tap to jump</div>
+        <div class="route-hint" id="routeHint">SPACE to climb · swipe or A/D to change lane</div>
 
         <!-- The upgrade sitting in each lane at the next split. Choosing a lane
              chooses the perk, so the perks have to be readable before the
@@ -42,6 +42,14 @@
           <div class="pick" id="pick1"><b></b><small></small></div>
           <div class="pick" id="pick2"><b></b><small></small></div>
         </div>
+        <!-- The turn is only fair because this is impossible to miss. -->
+        <div class="turn-warning" id="turnWarn" hidden></div>
+        <!-- A cache is spent by diving at the storm, so its countdown has to be
+             readable while the player is looking at the climber. -->
+        <div class="cache-chip" id="cacheChip" hidden></div>
+        <!-- Which way A and D currently move you. The turn flips this and the
+             player has no other way to know. -->
+        <div class="orient" id="orient" hidden>◀ A   D ▶</div>
         <div class="feed" id="feed" aria-live="polite"></div>
       </section>
 
@@ -67,7 +75,7 @@
           <div class="modal-icon" id="modalIcon">🌩️</div>
           <p id="modalKicker">SURVIVAL &amp; RESOURCE MANAGEMENT</p>
           <h2 id="modalTitle">The Last Ascent</h2>
-          <p id="modalCopy">You cannot stop climbing and the storm never stops rising. <b>Swipe</b> to change lane, <b>tap</b> to jump — a jump <b>skips</b> the whole floor, spikes and energy alike. Collect energy — it is your score <b>and</b> your only fuel, so every point spent surviving comes off the run. Hazards make you <b>slip</b>. And energy is worth <b>more the closer the storm is</b> — ×2 within three floors, ×4 within one and a half. Climb too fast and you outrun your own pay. Every four floors the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>. You have <b>three lives</b>; every twenty floors banks your score and patches one back. Reach floor <b>100</b> and keep everything — almost nobody gets there.</p>
+          <p id="modalCopy"><b>Nothing carries you up.</b> Press <b>SPACE</b> (or tap) and you leap one level; stand still and the tower falls away beneath you. Steer with <b>A / D</b> or a swipe — you can steer in mid-air, so jump on the beat and pick where you land. One perk, <b>AIR SAVE</b>, buys a second press while you are falling — that is why a double tap sometimes carries you over a hole. Land on <b>spikes</b> and it costs a life and your footing; fall below the <b>storm line</b> and it costs a life too. Energy is your score <b>and</b> your fuel, and it pays <b>×2 within three levels of the storm, ×4 within one and a half</b> — so climbing too fast outruns your own pay. Gold is always worth taking. Every few levels the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>, each holding a different upgrade — and the tower sometimes <b>turns</b>, swapping which side each lane is on, with a second and a half of warning. Three lives, and the tower gets nastier the higher you go. Every thirtieth level banks your score and patches one life back. Reach <b>300</b> and keep the lot.</p>
           <button id="modalButton" type="button">START CLIMBING</button>
         </div>
       </section>

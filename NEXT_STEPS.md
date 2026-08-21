@@ -76,7 +76,23 @@ are reproducible, slips work.
    slipping drops you *below* the hazard you just hit, so you climb back into
    it, and with the streak multiplier that is unavoidable. There is 1.4s of
    recovery immunity now, and the climber blinks through it.
-2. **The playtest gate — five runs.** The test is whether the swipe
+2. **Judge the tower turn.** It is ON, at `config.flipChance` 0.55, so about
+   half of the ten splits turn the tower. A random angle from
+   `config.flipAngles` decides whether the lanes come back reversed, and it is
+   telegraphed for `config.flipWarn` seconds with a banner, a countdown, a
+   gold tint over the whole arena and a rising tone.
+
+   The telegraph is the entire reason this is fair rather than a gotcha. An
+   unannounced control inversion makes the player fail at the input instead of
+   at the game, which is the failure mode the rest of the design spends its
+   Playability budget avoiding. Warned, it becomes something to read and
+   prepare for.
+
+   `config.flipCompensates` is false: a swipe is world-relative, so after a
+   reversing turn your controls are mirrored. Set it true and the turn becomes
+   pure spectacle. Play both.
+
+3. **The playtest gate — five runs.** The test is whether the swipe
    disappears from your attention. If it does not, no design fixes it and the
    honest move is to ship `../beanstalk`.
 3. Tune the risk bands. `config.riskBands` is the single most load-bearing
