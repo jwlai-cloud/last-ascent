@@ -42,6 +42,10 @@ const state = () => run(() => window.ascent.getState());
 await page.goto(URL);
 await page.waitForFunction(() => window.ascent, null, { timeout: 15000 });
 
+/* Grab the tutorial before a run ends and the modal is reused for the death
+ * screen. It is asserted near the bottom, once the config is known. */
+const tutorialCopy = await run(() => document.getElementById('modalCopy').textContent);
+
 // ── the frame ───────────────────────────────────────────────────────────────
 
 {
@@ -700,6 +704,26 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     `${opening.hazards} hazards or gaps found in levels 0-2 across 12 seeds`);
   check('but there is still something to collect there', opening.energy > 0,
     `${opening.energy} pickups across 12 seeds`);
+}
+
+/*
+ * The opening modal is the only tutorial in the game, and it drifted badly
+ * behind five separate redesigns — still promising a climb that happens on its
+ * own, a jump that skips a level, three lives and a hundred-level tower. A
+ * tutorial that lies is worse than none, so the numbers in it are asserted
+ * against the config rather than trusted.
+ */
+{
+  const cfg = await state();
+  const copy = { text: tutorialCopy, summit: cfg.summit, health: cfg.maxHealth, milestone: cfg.milestoneEvery };
+  check('the tutorial names the real summit', copy.text.includes(String(copy.summit)),
+    `says ${copy.summit}? ${copy.text.slice(-70)}`);
+  check('the tutorial names the real life count',
+    new RegExp(`\\b(${copy.health}|six)\\b`, 'i').test(copy.text), `${copy.health} lives`);
+  check('the tutorial names the real milestone spacing',
+    new RegExp(`(${copy.milestone}|thirtieth)`, 'i').test(copy.text), `every ${copy.milestone}`);
+  check('the tutorial does not still claim the climb is automatic',
+    !/cannot stop climbing|skips the whole/i.test(copy.text));
 }
 
 check('no runtime errors', errors.length === 0, errors.join(' | '));
