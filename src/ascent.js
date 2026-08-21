@@ -190,8 +190,13 @@
      * The player's expectation is the right one; the design was clever and
      * illegible. Five lives rather than three pays for it.
      */
-    health: 6,
-    healOnMilestone: 2,      // a checkpoint is a real breather now that spikes bite
+    /*
+     * Three, and one healed per milestone. Six with two healed handed out more
+     * lives than a run could spend — "too many lifes to get". Three makes each
+     * checkpoint matter and each hit hurt.
+     */
+    health: 3,
+    healOnMilestone: 1,      // one back per checkpoint, not two
 
     /* Hits in quick succession cost progressively more height. One mistake is
      * a stumble; three in a row is a fall. */
@@ -385,10 +390,25 @@
      * tower and a sweep measures what ships.
      */
     routes: {
-      SAFE:    { energy: .16, hazard: .04, gap: .03 },
-      DANGER:  { energy: .45, hazard: .20, gap: .13 },
-      UNKNOWN: { energy: .32, hazard: .12, gap: .08 },   // placeholder; derived per section
+      SAFE:    { energy: .16, hazard: .07, gap: .05 },
+      DANGER:  { energy: .42, hazard: .36, gap: .23 },
+      UNKNOWN: { energy: .30, hazard: .22, gap: .14 },   // placeholder; derived per section
     },
+
+    /*
+     * Danger RAMPS with height instead of being flat.
+     *
+     * A flat rate made the run bimodal: across a four-hundredths change in
+     * density the median run went from finishing the tower to dying on level
+     * sixteen. Everything was decided in the first twenty seconds, because
+     * that is when the climber has no upgrades and the line is already at
+     * pace. Once past it, nothing else threatened.
+     *
+     * Ramped, the bottom of the tower is survivable while you learn the beat
+     * and the top is genuinely dense.
+     */
+    dangerFloor: .45,        // multiplier on hazards and gaps at level zero
+    dangerCeiling: 1.55,     // and at the summit
   };
 
   const colors = {
@@ -827,19 +847,21 @@
     for (let f = fromFloor; f < fromFloor + span; f++) {
       for (let lane = 0; lane < config.lanes; lane++) {
         const route = config.routes[routeByLane[lane]];
+        const ramp = config.dangerFloor +
+          (config.dangerCeiling - config.dangerFloor) * Math.min(1, f / config.summit);
         const roll = game.rand();
         let kind = null;
 
-        if (roll < route.gap) {
+        if (roll < route.gap * ramp) {
           /* Never two gaps stacked in one lane: a fall drops through every gap
            * beneath it, and a column of them turned one mistake into a seven
            * floor plunge. A refused gap becomes plain floor — NOT a hazard.
            * Letting it fall through to the next branch quietly converted every
            * refused gap into spikes and tripled the hazard density. */
           kind = game.cells.get(`${lane}:${f - 1}`) === 'gap' ? null : 'gap';
-        } else if (roll < route.gap + route.hazard) {
+        } else if (roll < (route.gap + route.hazard) * ramp) {
           kind = 'hazard';
-        } else if (roll < route.gap + route.hazard + route.energy) {
+        } else if (roll < (route.gap + route.hazard) * ramp + route.energy) {
           // Caches only appear where the danger already is.
           kind = route.hazard > .2 && game.rand() < config.cacheChance ? 'cache' : 'energy';
         }
