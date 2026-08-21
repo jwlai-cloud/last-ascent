@@ -107,9 +107,14 @@ const won = await page.evaluate(() => {
   while (a.getState().running && a.getState().floorInt < a.getState().summit && n < 20000) {
     const s = a.getState(), next = Math.floor(s.floor) + 1;
     const clear = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, next)));
-    const e = clear.filter(l => a.cellAt(l, next) === 'energy');
-    const want = e.length ? e[0] : (clear[0] ?? s.lane);
-    if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
+    // Sealed floors have no clear lane; only a jump gets through one.
+    if (!clear.length) a.jump();
+    else {
+      const e = clear.filter(l => ['energy', 'cache'].includes(a.cellAt(l, next)));
+      const want = e.length ? e[0] : clear[0];
+      if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
+    }
+    if (s.stormGap < 1.5 && s.energy >= s.cost.surge) a.buy('surge');
     a.step(0.05); n++;
   }
   return { ...a.getState(), seconds: n * 0.05 };
