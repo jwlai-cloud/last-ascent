@@ -728,10 +728,18 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   const copy = { text: tutorialCopy, summit: cfg.summit, health: cfg.maxHealth, milestone: cfg.milestoneEvery };
   check('the tutorial names the real summit', copy.text.includes(String(copy.summit)),
     `says ${copy.summit}? ${copy.text.slice(-70)}`);
+  /* Numerals or words, either is fine — but the word list has to be derived
+   * from the config rather than hardcoded. It said "six" from when lives were
+   * six, so it could not recognise "Three" once they were three. */
+  const WORDS = ['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
+  const named = (text, n, ...extra) => {
+    const forms = [String(n), WORDS[n], ...extra].filter(Boolean);
+    return new RegExp(`\\b(${forms.join('|')})\\b`, 'i').test(text);
+  };
   check('the tutorial names the real life count',
-    new RegExp(`\\b(${copy.health}|six)\\b`, 'i').test(copy.text), `${copy.health} lives`);
+    named(copy.text, copy.health), `${copy.health} lives — "${copy.text.match(/\b\w+ lives\b/i)?.[0] ?? '?'}"`);
   check('the tutorial names the real milestone spacing',
-    new RegExp(`(${copy.milestone}|thirtieth)`, 'i').test(copy.text), `every ${copy.milestone}`);
+    named(copy.text, copy.milestone, 'thirtieth', 'twentieth'), `every ${copy.milestone}`);
   check('the tutorial does not still claim the climb is automatic',
     !/cannot stop climbing|skips the whole/i.test(copy.text));
 }
