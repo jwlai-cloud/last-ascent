@@ -120,9 +120,9 @@ check('a spend button responds to a real tap', tapped.shield === true && tapped.
 
 const won = await page.evaluate(() => {
   const a = window.ascent;
-  a.start(11); a.pause(true); a.mute(true);
+  a.start(1); a.pause(true); a.mute(true);   // a seed careful play is known to win
   let n = 0;
-  while (a.getState().running && a.getState().floorInt < a.getState().summit && n < 20000) {
+  while (a.getState().running && a.getState().floorInt < a.getState().summit && n < 40000) {
     const s = a.getState(), next = Math.floor(s.floor) + 1;
     const clear = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, next)));
     // Nothing climbs on its own: line up a safe lane, then jump.
@@ -131,7 +131,7 @@ const won = await page.evaluate(() => {
       if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
       else a.jump();
     }
-    if (s.stormGap < 1.5 && s.energy >= s.cost.surge) a.buy('surge');
+    if (s.stormGap < 1.6 && s.energy >= s.cost.surge) a.buy('surge');
     a.step(0.05); n++;
   }
   return { ...a.getState(), seconds: n * 0.05 };

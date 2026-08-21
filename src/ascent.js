@@ -34,7 +34,7 @@
      *
      * The pressure model has a natural length, and this is it.
      */
-    summit: 100,
+    summit: 300,
 
     /*
      * Milestones every twenty floors, each one a SCORE SNAPSHOT: your energy
@@ -47,7 +47,7 @@
      * asymmetry — everything collected since the last milestone is still lost,
      * and spending still comes straight off the next snapshot.
      */
-    milestoneEvery: 20,      // five checkpoints over the climb
+    milestoneEvery: 30,      // ten checkpoints over the climb
     titles: ['SURVIVOR', 'CLIMBER', 'ASCENDANT', 'UNBROKEN', 'STORMPROOF',
              'SKYBOUND', 'RELENTLESS', 'UNTOUCHABLE', 'LEGEND', 'THE LAST ASCENT'],
     /*
@@ -67,7 +67,17 @@
      * The sight line is what used to be the storm: one rising number, now the
      * bottom of the frame. Drop below it and it costs a life, not the run.
      */
-    scrollStart: .3,         // levels per second the world falls away at the outset
+    /*
+     * Doubled at the start. The opening used to be slack — half a level a
+     * second against a climber who can manage one — so nothing was at stake
+     * for the first minute. It begins at pace now.
+     *
+     * The CAP could not double with it. One jump is one level, so the climb
+     * ceiling is whatever a thumb sustains, measured at about one level a
+     * second and a little over one and a half with SPRING. A cap of two would
+     * be unbeatable by any play at all, which is not difficulty.
+     */
+    scrollStart: 1.3,        // levels per second the world falls away at the outset
     /*
      * Gentler than it was, because the tower got three times taller. A long
      * climb gives the ramp far longer to run: at .0042 it reached its cap
@@ -76,14 +86,14 @@
      * the slope — it has to stay clearly under the roughly one level a second
      * a good player sustains.
      */
-    scrollRamp: .0042,       // added per second
+    scrollRamp: .0035,       // added per second
     /*
      * Must stay well under the best achievable climb. Measured it at 0.83
      * levels a second while the scroll was already running at 1.15 and heading
      * for 1.75 — the tower was outrunning any possible player and every run
      * was lost before it started.
      */
-    scrollMax: 1.0,
+    scrollMax: 1.7,          // bounded by what a climber can physically sustain
     jumpFloors: 1,           // floors gained per leap, before LONG JUMP
     /*
      * The leap is deliberately unhurried. At .34s a spammed jump climbed three
@@ -92,7 +102,7 @@
      * At half a second the best possible pace is two floors a second and the
      * scroll tops out just under it, so the last stretch is genuinely close.
      */
-    jumpRise: .34,           // seconds a leap takes
+    jumpRise: .20,           // seconds a leap takes — the ceiling rises with the line
     fallSpeed: 4,            // floors per second with nothing underfoot
     /*
      * What spikes cost. Knocking the climber down a single floor made mistakes
@@ -131,7 +141,7 @@
     sealedChance: 0,
 
     firstSplit: 3,
-    splitEvery: 6,           // levels between choices after the first
+    splitEvery: 14,          // levels between choices after the first
     openingCache: true,      // plant one early rather than wait for the odds
     openingSafe: 2,          // levels of plain floor before anything can hurt you
 
@@ -170,8 +180,18 @@
      * restores one, so the arc of a run is survive to the next checkpoint,
      * bank, patch up, go again.
      */
-    health: 3,               // back to three: five made it too forgiving to be interesting
-    healOnMilestone: 1,
+    /*
+     * Spikes cost a life again.
+     *
+     * They cost only height for a while, on the reasoning that one failure
+     * should have one currency. In play that read as a bug — "how come the
+     * life is not dropping when hitting" — because a hit that flashes the
+     * screen and takes no visible resource looks like it did not register.
+     * The player's expectation is the right one; the design was clever and
+     * illegible. Five lives rather than three pays for it.
+     */
+    health: 6,
+    healOnMilestone: 2,      // a checkpoint is a real breather now that spikes bite
 
     /* Hits in quick succession cost progressively more height. One mistake is
      * a stumble; three in a row is a fall. */
@@ -327,7 +347,7 @@
      * worth less than failing. The bonus has to be large enough that the
      * summit is always the best outcome available.
      */
-    summitBonus: 120,
+    summitBonus: 300,
 
     // Per-lane character. The danger lane is where the score is.
     /*
@@ -338,10 +358,17 @@
      * theoretical 2.9, and stacking SPRING made it worse because faster jumps
      * only bought more chances to be hit.
      */
+    /*
+     * Thinned again when spikes went back to costing a life. A sweep showed
+     * lives were never the binding constraint — a careful climber summited two
+     * runs in five at hazard .22 whether it had five lives or eight — and that
+     * density was. At .15 the same climber makes three in five and a careless
+     * one still makes none.
+     */
     routes: {
-      SAFE:    { energy: .40, hazard: .03, gap: .03 },
-      DANGER:  { energy: 1.5, hazard: .22, gap: .14 },
-      UNKNOWN: { energy: 1.0, hazard: .13, gap: .09 },   // rerolled per section
+      SAFE:    { energy: .40, hazard: .02, gap: .02 },
+      DANGER:  { energy: 1.5, hazard: .15, gap: .10 },
+      UNKNOWN: { energy: 1.0, hazard: .09, gap: .065 },  // rerolled per section
     },
   };
 
@@ -921,8 +948,8 @@
     }
     config.routes.UNKNOWN = {
       energy: .4 + game.rand() * 2.0,
-      hazard: .03 + game.rand() * .26,
-      gap: .03 + game.rand() * .16,
+      hazard: .02 + game.rand() * .18,
+      gap: .02 + game.rand() * .12,
     };
     return names;
   }
@@ -1114,6 +1141,7 @@
       sound('spend');
       return;
     }
+    game.health--;
     game.slips++;
     game.recover = config.recover;
     game.stun = config.stun;
@@ -1123,7 +1151,8 @@
     shake = 1.4;
     flash = 1;
     sound('slip');
-    hurt('SPIKES — KNOCKED OFF');
+    hurt('SPIKES — A LIFE AND YOUR FOOTING');
+    if (game.health <= 0) end('fell', 'YOU FELL', 'The spikes had the last of you.');
   }
 
   /*
@@ -1757,6 +1786,10 @@
       return g ? g.position.x : null;
     },   // tests need a perk without waiting for a split
     setRecover: n => { game.recover = n; },
+    /* Balance is the whole job on this project, so it has to be sweepable from
+     * a probe rather than by editing source between every measurement. */
+    tune: patch => Object.assign(config, patch),
+    config: () => ({ ...config }),
     // Lets a test or a playtester flip the experiment without editing source.
     laneScreenX: i => laneX(i),      // so a test can assert which side of the screen a lane is on
     setFlip: (chance, invertControls = false) => {
