@@ -6,3 +6,6 @@ dist/
 last-ascent.zip
 
 .firecrawl/
+
+# screenshots the suite and probes rewrite on every run
+tests/*.png

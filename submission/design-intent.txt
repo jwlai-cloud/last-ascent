@@ -4,20 +4,20 @@ Design-Intent Document
 The Last Ascent. Survival & Resource Management.
 
 2. Target player and pitch
-For players who want a two-minute run that ends on a decision rather than a reflex. You are climbing an abandoned tower above a storm-filled city, you cannot stop climbing, and the storm never stops rising. Energy is the only resource, and it is both your score and the only thing keeping you alive.
+For players who want a short climb where every level is a decision rather than a reflex. You scale a collapsing tower above a storm. Nothing carries you upward, the floor falls away whether you move or not, and the energy you gather is both your score and the only thing keeping you alive.
 
 3. How to play (controls)
-Tap START CLIMBING. Swipe left or right to change lane; tap to jump a gap or a row of spikes. Keyboard equivalents are the arrow keys or A and D, and space to jump. Three buttons along the bottom spend energy: SHIELD absorbs one hit, SURGE pushes the storm back, GRAPPLE pulls you up two floors. The line above the tower always names the thing about to hurt you, so a new player can read what to do without being told first.
+Press SPACE, or tap, to leap exactly one level. Steer with A and D, or swipe. You can steer in mid-air, so the technique is to jump the moment you land and choose your lane on the way up. Three buttons spend energy: SHIELD absorbs one hit, SURGE pushes the storm back, GRAPPLE pulls you two levels higher. The line above the tower always names the thing about to hurt you, and it is the only tutorial the game needs.
 
 4. Core loop
-You climb automatically and steadily faster. Energy fragments are collected by steering into their lane; spikes and gaps make you slip a floor and a half. The storm rises as a share of your own climbing speed and overtakes you by the last section, so slipping is paid straight to it. Every four floors the three lanes split into safe, danger and unknown, and you choose a route simply by being in that lane when you reach the split — the strategy layer and the action layer share one input, so nothing pauses. Reach floor twenty, light the beacon, and keep the energy you did not spend. Get caught and you keep nothing.
+Jump, pick a lane, land, take what is there. Ledges are safe, spikes cost a life and your footing, and a gap drops you through. The storm rises faster than it did a moment ago and never stops, so standing still is losing. Every fourteen levels the three lanes split into safe, danger and unknown, each holding a different upgrade, so one swipe chooses your route and your perk together. Sometimes the tower turns and the lanes come back reversed, with a second and a half of warning. Reach level 300 and light the beacon; run out of lives and keep only what you had banked.
 
 5. What is in this prototype
-Implemented and playable: three snapped lanes, accelerating automatic climb, jumping with coyote time and input buffering, collectible energy, spikes and gaps that cost height, the rising storm, the risk multiplier, four route splits per run with rerolled unknown sections, all three spends, the summit and its beacon, banking, persistent best score, reset, and a teaching line that leads with the current threat.
-Not yet in: audio, hazards beyond spikes and gaps, and any second tower or environment.
+Implemented and playable: jump-driven climbing across three lanes, an accelerating storm line, ledges, spikes, gaps and falls, energy with a proximity multiplier, supply caches, five stacking upgrades taken at lane splits, three spends, ten banking milestones, the tower turn, the summit and its beacon, persistent best score, reset, and synthesised sound.
+Not yet in: a second tower, hazards beyond spikes and gaps, and a soundtrack.
 
 6. Progression and signature twist
-Climb speed tightens every floor, and the storm's share of that speed rises at every split until it is gaining on a clean run. The signature mechanic is that energy is worth more the closer the storm is — twice within three floors, four times within one and a half. The thing that kills you is the thing that pays you, so climbing fast means outrunning your own income and the real skill is riding just above the front. It also makes SURGE a genuine dilemma: it saves your life and cuts your earnings.
+The storm accelerates, hazard density rises with height, and the upgrades you pick stack against both. The signature mechanic is that energy is worth more the closer the storm is: double within three levels, quadruple within one and a half. The thing chasing you is the thing paying you, so climbing hard outruns your own income and the skill is riding just above the front. It makes every spend a real loss, because the energy that buys your survival is the score you came for.
 
 7. Future-state vision
-The full game keeps one tower and one climber and deepens the reasons to stay low — more hazards worth braving, and more ways to convert nerve into height.
+The full game keeps one tower and one climber and deepens the reasons to stay low, so a run is still a few minutes and a best score is still worth chasing.
