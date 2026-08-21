@@ -43,7 +43,7 @@
      * lanes and swipe, which is no decision at all — a scripted run took zero
      * damage on every seed. It tightens to about 0.6s by the summit.
      */
-    climbTime: 1.8,          // seconds per floor at floor zero
+    climbTime: 1.6,          // seconds per floor at floor zero
     /* GREATER than one. It was .975, which made `pow(ramp, floor)` shrink with
      * height, so the climb got steadily *slower* — the exact opposite of the
      * intent — and because the storm is a share of climb speed the chase never
@@ -56,6 +56,19 @@
      * inside the first twenty seconds, and a cache is planted in the opening
      * section rather than left to chance.
      */
+    /*
+     * Above this floor the "always one clear lane" guarantee starts lapsing, so
+     * some floors are blocked across all three lanes and the only way through
+     * is a jump.
+     *
+     * Until now that guarantee held everywhere, which meant swiping always
+     * sufficed and the jump was optional for the whole run — reported simply as
+     * "too easy". A sealed floor is still fair: it is visible several seconds
+     * ahead, and jumping is the answer the game already taught.
+     */
+    sealedFrom: 12,
+    sealedChance: .16,
+
     firstSplit: 3,
     splitEvery: 6,           // floors between choices after the first
     openingCache: true,      // plant one early rather than wait for the odds
@@ -97,7 +110,7 @@
      * restores one, so the arc of a run is survive to the next checkpoint,
      * bank, patch up, go again.
      */
-    health: 5,               // five, so a run lasts long enough to see everything
+    health: 3,               // back to three: five made it too forgiving to be interesting
     healOnMilestone: 1,
 
     /* Hits in quick succession cost progressively more height. One mistake is
@@ -694,8 +707,26 @@
         if (kind) game.cells.set(`${lane}:${f}`, kind);
       }
       // A floor with no way through is a dead end, not difficulty. Always clear one.
-      const blocked = [0, 1, 2].every(l => ['gap', 'hazard'].includes(game.cells.get(`${l}:${f}`)));
-      if (blocked) game.cells.delete(`${Math.floor(game.rand() * config.lanes)}:${f}`);
+      /*
+       * A sealed floor is BUILT, not waited for. Leaving it to coincidence
+       * produced about one in two hundred floors, because every split has a
+       * safe lane and all three rarely block at once — which is why swiping
+       * remained enough for a whole run and the jump stayed optional.
+       *
+       * Never two in a row: one jump clears one floor, so back-to-back seals
+       * would be unavoidable damage rather than a test.
+       */
+      const canSeal = f >= config.sealedFrom && game.sealedAt < f - 1 && f % config.splitEvery !== 0;
+      if (canSeal && game.rand() < config.sealedChance) {
+        for (let l = 0; l < config.lanes; l++) {
+          game.cells.set(`${l}:${f}`, game.rand() < .5 ? 'hazard' : 'gap');
+        }
+        game.sealedAt = f;
+      } else {
+        // Otherwise the guarantee holds: always at least one way through.
+        const blocked = [0, 1, 2].every(l => ['gap', 'hazard'].includes(game.cells.get(`${l}:${f}`)));
+        if (blocked) game.cells.delete(`${Math.floor(game.rand() * config.lanes)}:${f}`);
+      }
     }
     // Plant a cache in the opening stretch so the mechanic is seen, not rolled for.
     if (fromFloor === 0 && config.openingCache) {
@@ -823,7 +854,7 @@
       stormFraction: config.stormFraction,
       health: config.health,
       mirrored: false,
-      turns: 0,
+      turns: 0, sealedAt: -9,
       cache: 0, caches: 0,   // seconds of supply-cache boost left, and how many found
       flipPhase: null,      // null | 'warn' | 'turn'
       flipTimer: 0, flipAngle: 0, flipFrom: 0, flipSwaps: false,
@@ -1274,6 +1305,9 @@
 
     // What is directly above you decides everything for the next second.
     const next = Math.floor(game.floor) + 1;
+    const sealed = [0, 1, 2].every(l => ['gap', 'hazard'].includes(game.cells.get(`${l}:${next}`)));
+    if (sealed) return [7, 'FLOOR SEALED — JUMP IT, NO LANE IS CLEAR', 'danger'];
+
     const ahead = game.cells.get(`${game.lane}:${next}`);
     if (ahead === 'gap') { game.taughtJump = true; return [5, 'GAP AHEAD — TAP TO JUMP', 'danger']; }
     if (ahead === 'hazard') { game.taughtJump = true; return [5, 'SPIKES — TAP TO JUMP OR SWIPE AWAY', 'danger']; }

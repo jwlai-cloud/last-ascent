@@ -458,9 +458,12 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
       const st = a.getState();
       const next = Math.floor(st.floor) + 1;
       const clear = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, next)));
-      const rich = clear.filter(l => ['energy', 'cache'].includes(a.cellAt(l, next)));
-      const want = rich.length ? rich[0] : (clear.length ? clear[0] : st.lane);
-      if (want !== st.lane) a.moveLane(Math.sign(want - st.lane));
+      if (!clear.length) a.jump();                 // a sealed floor has no lane to take
+      else {
+        const rich = clear.filter(l => ['energy', 'cache'].includes(a.cellAt(l, next)));
+        const want = rich.length ? rich[0] : clear[0];
+        if (want !== st.lane) a.moveLane(Math.sign(want - st.lane));
+      }
       // A clean player also spends; the storm outpaces a climb that never does.
       if (st.stormGap < 1.6 && st.energy >= st.cost.surge) a.buy('surge');
       a.step(0.05); n++;
@@ -481,34 +484,51 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
 
 // ── the skill curve, as a balance regression ────────────────────────────────
 
-/* Scripted players of different competence. If a change makes the game
- * unlosable or unwinnable, this is what catches it. */
+/*
+ * Balance regression. The earlier version modelled "skill" as a percentage
+ * chance to steer, which turned out to be periodic and barely separated a good
+ * player from a bad one. The real divide is whether the player uses the whole
+ * verb set: sealed floors cannot be swiped around, so a climber who never
+ * jumps is capped no matter how well they steer.
+ */
 {
   const curve = await run(() => {
     const a = window.ascent;
-    const play = (seed, skill) => {
+    const play = (seed, jumps) => {
       a.start(seed); a.pause(true); a.mute(true);
-      let t = 0, tick = 0;
+      let t = 0;
       while (a.getState().running && t < 400) {
         const s = a.getState(), n = Math.floor(s.floor) + 1;
-        if (tick % 8 === 0 && (seed * 31 + tick * 7) % 100 < skill) {
-          const clear = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, n)));
-          const e = clear.filter(l => a.cellAt(l, n) === 'energy');
-          const want = e.length ? e[0] : (clear[0] ?? s.lane);
+        const clear = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, n)));
+        if (!clear.length) { if (jumps) a.jump(); }
+        else {
+          const e = clear.filter(l => ['energy', 'cache'].includes(a.cellAt(l, n)));
+          const want = e.length ? e[0] : clear[0];
           if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
         }
-        if (s.health <= 1 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
-        else if (s.stormGap < 1.4 && s.energy >= s.cost.surge) a.buy('surge');
-        a.step(0.05); t += 0.05; tick++;
+        if (s.stormGap < 1.5 && s.energy >= s.cost.surge) a.buy('surge');
+        a.step(0.05); t += 0.05;
       }
       return a.getState();
     };
-    return { good: play(1, 90), poor: play(7, 20) };
+    const seeds = [1, 7, 13, 21, 33];
+    const tally = jumps => {
+      const runs = seeds.map(sd => play(sd, jumps));
+      return {
+        summits: runs.filter(r => r.over === 'summit').length,
+        floor: Math.round(runs.reduce((n, r) => n + r.floorInt, 0) / runs.length),
+        banked: Math.round(runs.reduce((n, r) => n + r.banked, 0) / runs.length),
+      };
+    };
+    return { jumping: tally(true), swiping: tally(false) };
   });
-  check('a competent player reaches the summit', curve.good.over === 'summit',
-    `floor ${curve.good.floorInt}, banked ${curve.good.banked}`);
-  check('a careless player does not', curve.poor.over !== 'summit' && curve.poor.over !== null,
-    `floor ${curve.poor.floorInt}, over ${curve.poor.over}`);
+  check('a player using every verb reaches the summit',
+    curve.jumping.summits === 5, `${curve.jumping.summits}/5, avg floor ${curve.jumping.floor}`);
+  check('swiping alone is not enough — sealed floors need the jump',
+    curve.swiping.summits < curve.jumping.summits && curve.swiping.floor < 80,
+    `${curve.swiping.summits}/5 summits, avg floor ${curve.swiping.floor} vs ${curve.jumping.floor}`);
+  check('and it costs a lot of score', curve.swiping.banked < curve.jumping.banked * .7,
+    `${curve.swiping.banked} vs ${curve.jumping.banked} banked`);
 }
 
 // ── the tutorial ────────────────────────────────────────────────────────────
@@ -770,6 +790,47 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   });
   check('the wall lights are not gold', golds.window !== golds.cache,
     `cache ${golds.cache}, window ${golds.window}`);
+}
+
+/*
+ * Sealed floors: the reason the jump is not optional. Reported as "too easy" —
+ * generation guaranteed a clear lane on every floor, so swiping alone carried
+ * a whole run.
+ */
+{
+  const sealed = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    a.start(4); a.pause(true); a.mute(true);
+    climbTo(70);
+    const floors = [];
+    for (let f = 1; f < 100; f++) {
+      if ([0, 1, 2].every(l => ['gap', 'hazard'].includes(a.cellAt(l, f)))) floors.push(f);
+    }
+    return { floors, running: a.getState().running };
+  })()`);
+  check('the tower seals some floors once it is high enough',
+    sealed.floors.length > 0 && sealed.floors.every(f => f >= 12),
+    `sealed at ${sealed.floors.join(', ') || 'none'}`);
+  check('never two sealed floors in a row — one jump clears one floor',
+    sealed.floors.every((f, i) => i === 0 || f - sealed.floors[i - 1] > 1),
+    sealed.floors.join(', '));
+
+  await fresh();
+  const cleared = await run(() => {
+    const a = window.ascent;
+    const st = a.getState();
+    const f = Math.floor(st.floor) + 1;
+    for (const l of [0, 1, 2]) a.setCell(l, f, 'hazard');
+    for (const l of [0, 1, 2]) a.setCell(l, f + 1, null);   // isolate the sealed floor
+    const hint = (a.step(0.01), a.getState().hint);
+    a.jump();
+    while (a.getState().floor < f + 0.4 && a.getState().running) a.step(0.02);
+    return { hint, slips: a.getState().slips, skipped: a.getState().skipped };
+  });
+  check('a sealed floor announces itself', /SEALED/.test(cleared.hint || ''), cleared.hint);
+  check('and a jump clears it', cleared.slips === 0 && cleared.skipped > 0,
+    `slips ${cleared.slips}, skipped ${cleared.skipped}`);
 }
 
 check('no runtime errors', errors.length === 0, errors.join(' | '));
