@@ -447,6 +447,41 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     JSON.stringify(spends.afterHit));
   check('SURGE pushes the line back', spends.surge > 1, `gap +${spends.surge}`);
   check('GRAPPLE buys height directly', spends.grapple >= 2, `+${spends.grapple} levels`);
+
+  /* And it resolves what it pulls you onto, exactly as a landing does. It used
+   * to add two to the height and nothing else, so a grapple onto a fragment
+   * did not collect it, a grapple onto spikes was free, and a grapple over a
+   * gap left the climber standing on air. */
+  const pulled = await run(() => {
+    const a = window.ascent, out = {};
+
+    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
+    let st = a.getState();
+    a.setCell(st.lane, st.floorInt + 2, 'energy');
+    const before = a.getState().energy;
+    a.buy('grapple');
+    out.collected = a.getState().energy - (before - a.getState().cost.grapple);
+
+    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
+    st = a.getState();
+    a.setCell(st.lane, st.floorInt + 2, 'hazard');
+    const lives = a.getState().health;
+    a.buy('grapple');
+    out.hurt = lives - a.getState().health;
+
+    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
+    st = a.getState();
+    a.setCell(st.lane, st.floorInt + 2, 'gap');
+    a.buy('grapple');
+    const airborneAt = a.getState().floorInt;
+    for (let i = 0; i < 200 && !a.getState().grounded; i++) a.step(0.02);
+    out.fell = { from: airborneAt, to: a.getState().floorInt };
+    return out;
+  });
+  check('GRAPPLE collects what it lands on', pulled.collected >= 1, `+${pulled.collected} energy`);
+  check('GRAPPLE onto spikes still hurts', pulled.hurt === 1, `${pulled.hurt} life`);
+  check('GRAPPLE over a gap drops you through it',
+    pulled.fell.to < pulled.fell.from, `level ${pulled.fell.from} -> ${pulled.fell.to}`);
   check('every spend comes off the energy you are scored on',
     spends.left === spends.start - spends.spent,
     `${spends.start} - ${spends.spent} = ${spends.left}`);

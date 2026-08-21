@@ -1412,7 +1412,16 @@
     sound('spend');
     if (kind === 'shield') { game.shield = true; showFeed('SHIELDED'); }
     if (kind === 'surge') { game.storm -= config.surgePush; showFeed('SURGE'); }
-    if (kind === 'grapple') { game.floor += config.grappleClimb; showFeed('GRAPPLE'); }
+    if (kind === 'grapple') {
+      /* Resolve where it puts you, exactly as a landing does. It used to add
+       * two to the height and nothing else, so a grapple onto a fragment did
+       * not collect it, a grapple onto spikes was free, and a grapple over a
+       * gap left the climber standing on air. */
+      game.airborne = 0;
+      game.floor = Math.floor(game.floor + .0001) + config.grappleClimb;
+      showFeed('GRAPPLE');
+      land();
+    }
     sync();
     return true;
   }
