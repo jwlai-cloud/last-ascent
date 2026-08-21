@@ -94,7 +94,9 @@ const opening = await page.evaluate(() => window.ascent.getState());
 check('a run starts and the climb advances', opening.running && opening.floor > 0.2,
   `floor ${opening.floor.toFixed(2)}, storm gap ${opening.stormGap.toFixed(1)}`);
 
-await page.evaluate(() => { window.ascent.mute(true); window.ascent.setEnergy(40); });
+/* Pause before tapping: the live loop keeps climbing between the click and the
+ * read, and a hazard can consume the shield before it is checked. */
+await page.evaluate(() => { window.ascent.mute(true); window.ascent.pause(true); window.ascent.setEnergy(40); });
 await page.click('#buyShield');
 const tapped = await page.evaluate(() => window.ascent.getState());
 check('a spend button responds to a real tap', tapped.shield === true && tapped.spent >= tapped.cost.shield,
