@@ -54,9 +54,15 @@
      * The sight line is what used to be the storm: one rising number, now the
      * bottom of the frame. Drop below it and it costs a life, not the run.
      */
-    scrollStart: .5,         // floors per second the world falls away at the outset
-    scrollRamp: .009,        // added per second: gradual, and relentless
-    scrollMax: 1.75,         // just under a perfect jump cadence of two
+    scrollStart: .3,         // levels per second the world falls away at the outset
+    scrollRamp: .0042,       // added per second: gradual, and relentless
+    /*
+     * Must stay well under the best achievable climb. Measured it at 0.83
+     * levels a second while the scroll was already running at 1.15 and heading
+     * for 1.75 — the tower was outrunning any possible player and every run
+     * was lost before it started.
+     */
+    scrollMax: 1.0,
     jumpFloors: 1,           // floors gained per leap, before LONG JUMP
     /*
      * The leap is deliberately unhurried. At .34s a spammed jump climbed three
@@ -65,7 +71,7 @@
      * At half a second the best possible pace is two floors a second and the
      * scroll tops out just under it, so the last stretch is genuinely close.
      */
-    jumpRise: .5,            // seconds a leap takes
+    jumpRise: .34,           // seconds a leap takes
     fallSpeed: 4,            // floors per second with nothing underfoot
     /*
      * What spikes cost. Knocking the climber down a single floor made mistakes
@@ -208,13 +214,23 @@
      * deletes the routing decision the game is built on. An upgrade that
      * removes a decision is not an upgrade.
      */
+    /*
+     * ONE JUMP IS ONE LEVEL, always. Nothing here may change that.
+     *
+     * LONG JUMP used to add whole floors to a leap and DOUBLE JUMP chained
+     * them, so a stacked climber gained six levels from one press and the
+     * level count stopped meaning anything. Both are repurposed: SPRING makes
+     * the leap quicker rather than longer, and DOUBLE JUMP is a save while
+     * falling rather than a way to climb faster.
+     */
     upgrades: [
-      { id: 'doubleJump', name: 'DOUBLE JUMP', blurb: 'one more jump in the air', max: 2 },
+      { id: 'airSave',    name: 'AIR SAVE',    blurb: 'one jump while falling', max: 1 },
       { id: 'magnet',     name: 'MAGNET',      blurb: 'pull energy from the next lane', max: 1 },
-      { id: 'longJump',   name: 'LONG JUMP',   blurb: 'jumps skip one more floor', max: 2 },
+      { id: 'spring',     name: 'SPRING',      blurb: 'leap quicker, climb faster', max: 3 },
       { id: 'spareShield',name: 'SPARE SHIELD',blurb: 'a free shield at every split', max: 2 },
-      { id: 'anchor',     name: 'ANCHOR',      blurb: 'slips cost far less height', max: 3 },
+      { id: 'grip',       name: 'GRIP',        blurb: 'spikes knock you down less', max: 3 },
     ],
+    springGain: .12,         // fraction knocked off the leap time per stack
     /*
      * A supply cache: rare, gold, and worth going out of your way for.
      *
@@ -229,7 +245,7 @@
     cacheTime: 8,            // seconds it burns
     cacheMult: 2,            // multiplies the risk band while it lasts
 
-    anchorRelief: .4,        // floors shaved off a slip per stack
+    gripRelief: .45,         // floors shaved off a knock-down per GRIP stack
     minSlip: .3,
 
     orbit: .26,              // radians the camera swings at a split — about 15 degrees
@@ -285,10 +301,18 @@
     summitBonus: 50,
 
     // Per-lane character. The danger lane is where the score is.
+    /*
+     * Halved from the auto-climb model. There, a floor line was crossed and
+     * only the climber's own lane mattered for an instant. Now every single
+     * level must be LANDED on, so the same densities meant a knock-down every
+     * few jumps: the measured climb was 0.68 levels a second against a
+     * theoretical 2.9, and stacking SPRING made it worse because faster jumps
+     * only bought more chances to be hit.
+     */
     routes: {
-      SAFE:    { energy: .35, hazard: .05, gap: .05 },
-      DANGER:  { energy: 1.6, hazard: .42, gap: .28 },
-      UNKNOWN: { energy: 1.0, hazard: .25, gap: .18 },   // rerolled per section
+      SAFE:    { energy: .40, hazard: .03, gap: .03 },
+      DANGER:  { energy: 1.5, hazard: .22, gap: .14 },
+      UNKNOWN: { energy: 1.0, hazard: .13, gap: .09 },   // rerolled per section
     },
   };
 
@@ -867,9 +891,9 @@
       [names[i], names[j]] = [names[j], names[i]];
     }
     config.routes.UNKNOWN = {
-      energy: .4 + game.rand() * 2.2,
-      hazard: .05 + game.rand() * .5,
-      gap: .05 + game.rand() * .3,
+      energy: .4 + game.rand() * 2.0,
+      hazard: .03 + game.rand() * .26,
+      gap: .03 + game.rand() * .16,
     };
     return names;
   }
@@ -901,7 +925,7 @@
       recover: 0,          // seconds of post-slip immunity remaining
       airborne: 0,         // seconds left in the current leap
       jumpFrom: 0, jumpTo: 0,
-      grounded: true, stun: 0,
+      grounded: true, stun: 0, usedAirSave: false, jumpSpan: config.jumpRise,
       elapsed: 0,          // seconds of run, which is what the scroll ramps on
       peak: 0,             // highest floor reached, which is what a slip takes back
       coyote: 0, buffered: 0,
@@ -911,7 +935,6 @@
       sectionRoutes: new Map(), sectionUpgrades: new Map(),
       generatedTo: 0, nextSplit: config.firstSplit,
       upgrades: Object.fromEntries(config.upgrades.map(u => [u.id, 0])),
-      airJumps: 0,          // air jumps left in the current jump, from DOUBLE JUMP
       collected: 0, spent: 0, slips: 0, skipped: 0,
       hint: null, hintRank: -1, hintUntil: 0, hintTime: 0,
       taughtJump: false, taughtSwipe: false,
@@ -945,6 +968,7 @@
     const next = Math.min(config.lanes - 1, Math.max(0, game.lane + applied));
     if (next === game.lane) return false;
     game.lane = next;
+    sidestep();
     return true;
   }
 
@@ -953,19 +977,28 @@
    * fixed number of floors and resolves whatever it lands on. DOUBLE JUMP
    * buys another leap before touching down.
    */
+  /* One press, one level. AIR SAVE buys a second leap only while falling, so
+   * it rescues a mistake and never accelerates a climb. */
   function jump() {
     if (!game.running || game.stun > 0) return false;
-    if (game.airborne > 0) {
-      if (game.airJumps <= 0) return false;
-      game.airJumps--;
-    } else if (!game.grounded && game.coyote <= 0) {
-      return false;
-    } else {
-      game.airJumps = game.upgrades.doubleJump;
+
+    if (game.airborne > 0) return false;               // already rising: no chaining
+    if (!game.grounded) {
+      if (game.coyote > 0) {
+        // ordinary coyote-time jump, just after stepping off
+      } else if (game.upgrades.airSave && !game.usedAirSave) {
+        game.usedAirSave = true;
+        showFeed('AIR SAVE');
+      } else {
+        return false;
+      }
     }
-    game.airborne = config.jumpRise;
+
+    const rise = config.jumpRise * Math.pow(1 - config.springGain, game.upgrades.spring);
+    game.airborne = rise;
+    game.jumpSpan = rise;
     game.jumpFrom = game.floor;
-    game.jumpTo = game.floor + config.jumpFloors + game.upgrades.longJump;
+    game.jumpTo = Math.floor(game.floor + .0001) + config.jumpFloors;
     game.grounded = false;
     game.coyote = 0;
     sound('jump');
@@ -984,15 +1017,26 @@
    */
   function land() {
     const f = Math.floor(game.floor + .0001);
-    const kind = game.cells.get(`${game.lane}:${f}`);
-
-    if (kind === 'gap') { game.grounded = false; return; }   // nothing to stand on
-
+    if (game.cells.get(`${game.lane}:${f}`) === 'gap') {
+      game.grounded = false;                 // nothing to stand on
+      return;
+    }
     game.floor = f;
     game.grounded = true;
-    game.airJumps = 0;
+    game.usedAirSave = false;
+    resolveFooting(f);
+  }
 
-    // MAGNET, and a burning cache, sweep the neighbouring lanes on landing.
+  /*
+   * Whatever is under the climber's feet, resolved. Called on a landing AND on
+   * a sidestep: stepping onto a fragment plainly ought to pick it up, and it
+   * only counted on a jump before — which read as the game ignoring half of
+   * what the player did.
+   */
+  function resolveFooting(f) {
+    const kind = game.cells.get(`${game.lane}:${f}`);
+
+    // MAGNET, and a burning cache, sweep the neighbouring lanes as well.
     const reach = Math.min(Math.max(game.upgrades.magnet, game.cache > 0 ? 1 : 0), config.lanes - 2);
     for (let r = 1; r <= reach; r++) {
       for (const lane of [game.lane - r, game.lane + r]) {
@@ -1007,6 +1051,12 @@
       if (game.recover > 0) { showFeed('RECOVERING'); return; }
       spiked();
     }
+  }
+
+  /* A sidestep resolves the new footing the same way a landing does. */
+  function sidestep() {
+    if (!game.grounded) return;
+    resolveFooting(Math.floor(game.floor + .0001));
   }
 
   /*
@@ -1031,7 +1081,7 @@
     game.stun = config.stun;
     game.grounded = false;
     game.airborne = 0;
-    game.floor -= config.hazardDrop;
+    game.floor -= Math.max(.8, config.hazardDrop - game.upgrades.grip * config.gripRelief);
     shake = 1.4;
     flash = 1;
     sound('slip');
@@ -1122,7 +1172,7 @@
       /* A leap is a fixed arc between two floors, so it always lands where it
        * said it would — no drift, no "almost made it". */
       game.airborne = Math.max(0, game.airborne - dt);
-      const t = 1 - game.airborne / config.jumpRise;
+      const t = 1 - game.airborne / (game.jumpSpan || config.jumpRise);
       game.floor = game.jumpFrom + (game.jumpTo - game.jumpFrom) * t;
       if (game.airborne === 0) land();
     } else if (!game.grounded) {
@@ -1432,7 +1482,7 @@
     game.laneVisual += (game.lane - game.laneVisual) * Math.min(1, dt * 18);
     const jumping = game.airborne > 0;
     const arc = jumping
-      ? Math.sin((1 - game.airborne / config.jumpRise) * Math.PI) * config.jumpHeight
+      ? Math.sin((1 - game.airborne / (game.jumpSpan || config.jumpRise)) * Math.PI) * config.jumpHeight
       : 0;
     /* The body is simply where the simulation puts it. The old stepped
      * pull-up animated an auto-climb that no longer exists: every floor is a
@@ -1641,7 +1691,7 @@
       multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint, mirrored: game?.mirrored,
       cache: game?.cache, caches: game?.caches,
       flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps, turns: game?.turns,
-      upgrades: game && { ...game.upgrades }, airJumps: game?.airJumps,
+      upgrades: game && { ...game.upgrades }, usedAirSave: game?.usedAirSave,
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
       routes: game && routesAt(game.floor), routesAhead: game && routesAt(game.floor + config.splitEvery),

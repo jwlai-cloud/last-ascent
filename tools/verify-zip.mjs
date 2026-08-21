@@ -91,8 +91,17 @@ check('the unzipped build boots from a local server with the internet off', true
 await page.click('#modalButton');
 await page.waitForTimeout(1200);
 const opening = await page.evaluate(() => window.ascent.getState());
-check('a run starts and the climb advances', opening.running && opening.floor > 0.2,
-  `floor ${opening.floor.toFixed(2)}, storm gap ${opening.stormGap.toFixed(1)}`);
+/* The climber does not rise on his own any more — that is the whole redesign —
+ * so the live check is that the world falls away and a real key press climbs. */
+check('the world falls away on its own', opening.running && opening.storm > -5,
+  `sight line ${opening.storm.toFixed(2)}, gap ${opening.stormGap.toFixed(1)}`);
+{
+  const before = await page.evaluate(() => window.ascent.getState().floor);
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(600);
+  const after = await page.evaluate(() => window.ascent.getState().floor);
+  check('a real space press climbs a level', after > before, `floor ${before.toFixed(2)} -> ${after.toFixed(2)}`);
+}
 
 /* Pause before tapping: the live loop keeps climbing between the click and the
  * read, and a hazard can consume the shield before it is checked. */
@@ -109,12 +118,11 @@ const won = await page.evaluate(() => {
   while (a.getState().running && a.getState().floorInt < a.getState().summit && n < 20000) {
     const s = a.getState(), next = Math.floor(s.floor) + 1;
     const clear = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, next)));
-    // Sealed floors have no clear lane; only a jump gets through one.
-    if (!clear.length) a.jump();
-    else {
-      const e = clear.filter(l => ['energy', 'cache'].includes(a.cellAt(l, next)));
-      const want = e.length ? e[0] : clear[0];
+    // Nothing climbs on its own: line up a safe lane, then jump.
+    const want = clear.includes(s.lane) ? s.lane : (clear[0] ?? s.lane);
+    if (s.grounded) {
       if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
+      else a.jump();
     }
     if (s.stormGap < 1.5 && s.energy >= s.cost.surge) a.buy('surge');
     a.step(0.05); n++;
