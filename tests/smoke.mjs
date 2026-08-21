@@ -779,6 +779,100 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     !/cannot stop climbing|skips the whole/i.test(copy.text));
 }
 
+/*
+ * EVERY WAY OF ARRIVING AT A CELL × EVERY KIND OF CELL.
+ *
+ * Three bugs shipped that share one shape, and all three were found by a human
+ * playing rather than by this suite: a sidestep onto a fragment did not collect
+ * it, a grapple onto one did not either, and a grapple onto spikes was free.
+ * Each had a hand-written test for the arrival it happened to be written for
+ * and none for the others, so the gaps were invisible.
+ *
+ * This enumerates the matrix instead of guessing at it. Anything that reaches a
+ * cell must resolve it the same way.
+ */
+{
+  const matrix = await run(() => {
+    const a = window.ascent;
+    const cells = ['energy', 'cache', 'hazard', 'gap', null];
+    const arrivals = {
+      jump: st => { a.jump(); for (let i = 0; i < 400 && a.getState().airborne > 0; i++) a.step(0.02); },
+      sidestep: st => {
+        // put the target in a neighbouring lane and step into it
+        const to = st.lane === 0 ? 1 : st.lane - 1;
+        a.moveLane(Math.sign(to - st.lane));
+      },
+      grapple: st => { a.buy('grapple'); },
+    };
+    const out = [];
+    for (const arrival of Object.keys(arrivals)) {
+      for (const kind of cells) {
+        a.start(9); a.pause(true); a.mute(true);
+        a.setStorm(-400);                       // isolate from the line
+        const st0 = a.getState();
+        const lvl = arrival === 'grapple' ? st0.floorInt + 2
+          : arrival === 'jump' ? st0.floorInt + 1 : st0.floorInt;
+        const lane = arrival === 'sidestep' ? (st0.lane === 0 ? 1 : st0.lane - 1) : st0.lane;
+        for (const l of [0, 1, 2]) a.setCell(l, lvl, l === lane ? kind : null);
+        a.grant('magnet', 0);                   // no sweeping; test the cell itself
+        a.setEnergy(200);                       // fund BEFORE the baseline, or the
+        const before = a.getState();            // funding reads as a collection
+        const spentBefore = before.spent;
+        arrivals[arrival](st0);
+        a.step(0.02);
+        const after = a.getState();
+        out.push({
+          arrival, kind: kind ?? 'empty',
+          /* Net of whatever the arrival itself cost, or a grapple looks like it
+           * collected two hundred because the test funded it. */
+          gained: (after.energy + (after.spent - spentBefore)) - before.energy,
+          lostLife: before.health - after.health,
+          cleared: a.cellAt(lane, lvl) === null,
+        });
+      }
+    }
+    return out;
+  });
+
+  const find = (arrival, kind) => matrix.find(r => r.arrival === arrival && r.kind === kind);
+  for (const arrival of ['jump', 'sidestep', 'grapple']) {
+    const e = find(arrival, 'energy'), c = find(arrival, 'cache'), h = find(arrival, 'hazard');
+    check(`arriving by ${arrival} collects energy`, e.gained >= 1 && e.cleared,
+      `gained ${e.gained}, cell cleared ${e.cleared}`);
+    check(`arriving by ${arrival} collects a cache`, c.gained >= 1 && c.cleared,
+      `gained ${c.gained}, cell cleared ${c.cleared}`);
+    check(`arriving by ${arrival} on spikes costs a life`, h.lostLife === 1,
+      `lost ${h.lostLife}`);
+  }
+}
+
+/*
+ * The scene must agree with the grid. A collected fragment once stayed on
+ * screen because the cell was deleted and the mesh was not, and a mirroring
+ * turn moved the ledges while leaving the spikes behind — both invisible to a
+ * suite that only ever read state.
+ */
+{
+  const agree = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    a.start(5); a.pause(true); a.mute(true);
+    climbTo(25);
+    const wrong = [];
+    for (let f = 1; f < 40; f++) {
+      for (let lane = 0; lane < 3; lane++) {
+        const x = a.cellScreenX(lane, f);
+        if (x === null) continue;
+        if (Math.abs(x - a.laneScreenX(lane)) > 0.001) wrong.push(lane + ':' + f);
+      }
+    }
+    return { wrong, ghosts: a.ghostPickups() };
+  })()`);
+  check('every drawn cell sits at its own lane', agree.wrong.length === 0, agree.wrong.slice(0, 6).join(', '));
+  check('no collected fragment is still in the scene', agree.ghosts === 0,
+    `${agree.ghosts} meshes with no cell behind them`);
+}
+
 check('no runtime errors', errors.length === 0, errors.join(' | '));
 
 await page.screenshot({ path: 'tests/last-run.png' });

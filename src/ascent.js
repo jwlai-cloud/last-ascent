@@ -1859,6 +1859,16 @@
     seed: n => { const was = game.running; reset(n); game.running = was; },
     mute: on => { muted = !!on; },
     grant: (id, n = 1) => { game.upgrades[id] = n; sync(); },
+    /* Pickup meshes that outlived their cell. The scene and the grid must
+     * agree, and a mesh left behind is a fragment the player can see and can
+     * never take. */
+    ghostPickups: () => {
+      let ghosts = 0;
+      for (const [key, m] of game.meshes) {
+        if (!game.cells.has(key) && m.parent && !game.popping.includes(m)) ghosts++;
+      }
+      return ghosts;
+    },
     cellScreenX: (lane, floor) => {
       const g = game.cellGroups.find(c => c.userData.lane === lane && Math.round(c.position.y) === floor);
       return g ? g.position.x : null;
