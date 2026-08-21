@@ -43,12 +43,40 @@
      * lanes and swipe, which is no decision at all — a scripted run took zero
      * damage on every seed. It tightens to about 0.6s by the summit.
      */
-    climbTime: 1.6,          // seconds per floor at floor zero
-    /* GREATER than one. It was .975, which made `pow(ramp, floor)` shrink with
-     * height, so the climb got steadily *slower* — the exact opposite of the
-     * intent — and because the storm is a share of climb speed the chase never
-     * tightened either. Speed is the escalation and it has to accelerate. */
-    speedRamp: 1.012,
+    /*
+     * THE CLIMB IS THE PLAYER'S JOB.
+     *
+     * Nothing carries the climber upward any more. He stands on a ledge, the
+     * tower falls away beneath him, and every floor he gains is a jump he
+     * chose to make. Before this the climb ran on a timer and steering was the
+     * only verb that mattered — the player was a passenger with opinions.
+     *
+     * The sight line is what used to be the storm: one rising number, now the
+     * bottom of the frame. Drop below it and it costs a life, not the run.
+     */
+    scrollStart: .5,         // floors per second the world falls away at the outset
+    scrollRamp: .009,        // added per second: gradual, and relentless
+    scrollMax: 1.75,         // just under a perfect jump cadence of two
+    jumpFloors: 1,           // floors gained per leap, before LONG JUMP
+    /*
+     * The leap is deliberately unhurried. At .34s a spammed jump climbed three
+     * floors a second against a scroll of 0.7, which is not a race — a perfect
+     * player summited in twenty nine seconds without ever being threatened.
+     * At half a second the best possible pace is two floors a second and the
+     * scroll tops out just under it, so the last stretch is genuinely close.
+     */
+    jumpRise: .5,            // seconds a leap takes
+    fallSpeed: 4,            // floors per second with nothing underfoot
+    /*
+     * What spikes cost. Knocking the climber down a single floor made mistakes
+     * so cheap that a scripted player who never changed lane at all beat one
+     * who dodged: careless was simply faster. A real setback is a couple of
+     * floors plus a moment on the floor unable to jump, which is time the
+     * sight line spends closing.
+     */
+    hazardDrop: 2.2,         // floors lost to a hit
+    stun: .45,               // seconds unable to jump afterwards
+    respawnAbove: 4,         // floors above the line a lost life puts you back
     /*
      * The first split comes early and the rest follow on the normal cadence.
      * A judge plays briefly, so every mechanic has to appear before they stop:
@@ -66,8 +94,14 @@
      * "too easy". A sealed floor is still fair: it is visible several seconds
      * ahead, and jumping is the answer the game already taught.
      */
+    /*
+     * Sealed floors are off. They were built for the old model, where a jump
+     * SKIPPED a floor and an all-blocked floor was a test of the verb. Now a
+     * jump lands ON the next floor, so a floor with no safe lane is guaranteed
+     * damage with no counterplay — difficulty by ambush rather than by choice.
+     */
     sealedFrom: 12,
-    sealedChance: .16,
+    sealedChance: 0,
 
     firstSplit: 3,
     splitEvery: 6,           // floors between choices after the first
@@ -82,15 +116,13 @@
      * spend later. The first version had it rising at 0.06 and the gap grew to
      * twenty; there was no game in it.
      */
-    stormStart: -4,          // floors below the climber at the start
+    stormStart: -5,          // where the sight line starts, below the first ledge
     /*
      * Raised when lives went from three to five. More lives means more hits
      * survived, which flattened the curve until a careless scripted player
      * summited. The answer is not fewer lives — a longer run was the point —
      * it is that the storm, not the hit count, should be what ends you.
      */
-    stormFraction: .80,      // storm speed as a share of CLIMB speed, not an absolute
-    stormRampAdd: .025,      // seventeen splits carry it to about 1.22 by the top
 
     /*
      * A hit costs height, not hit points. This is the only failure axis in the
@@ -698,9 +730,17 @@
         const route = config.routes[routeByLane[lane]];
         const roll = game.rand();
         let kind = null;
-        if (roll < route.gap) kind = 'gap';
-        else if (roll < route.gap + route.hazard) kind = 'hazard';
-        else if (roll < route.gap + route.hazard + route.energy) {
+
+        if (roll < route.gap) {
+          /* Never two gaps stacked in one lane: a fall drops through every gap
+           * beneath it, and a column of them turned one mistake into a seven
+           * floor plunge. A refused gap becomes plain floor — NOT a hazard.
+           * Letting it fall through to the next branch quietly converted every
+           * refused gap into spikes and tripled the hazard density. */
+          kind = game.cells.get(`${lane}:${f - 1}`) === 'gap' ? null : 'gap';
+        } else if (roll < route.gap + route.hazard) {
+          kind = 'hazard';
+        } else if (roll < route.gap + route.hazard + route.energy) {
           // Caches only appear where the danger already is.
           kind = route.hazard > .2 && game.rand() < config.cacheChance ? 'cache' : 'energy';
         }
@@ -851,7 +891,6 @@
       floor: 0,            // continuous height in floors
       energy: 0,
       storm: config.stormStart,
-      stormFraction: config.stormFraction,
       health: config.health,
       mirrored: false,
       turns: 0, sealedAt: -9,
@@ -860,8 +899,10 @@
       flipTimer: 0, flipAngle: 0, flipFrom: 0, flipSwaps: false,
       combo: 0, comboAt: 0,   // consecutive hits, and the floor of the last one
       recover: 0,          // seconds of post-slip immunity remaining
-      airborne: 0,         // seconds left in the current jump arc
-      jumpSpan: 1,         // how long that arc was, so it can be drawn
+      airborne: 0,         // seconds left in the current leap
+      jumpFrom: 0, jumpTo: 0,
+      grounded: true, stun: 0,
+      elapsed: 0,          // seconds of run, which is what the scroll ramps on
       peak: 0,             // highest floor reached, which is what a slip takes back
       coyote: 0, buffered: 0,
       shield: false,
@@ -880,10 +921,19 @@
     sync();
   }
 
-  /* Expressing the storm as a share of climb speed rather than an absolute
-   * keeps the chase tight however fast the climb gets. Declared here because
-   * the jump length is measured in floors and needs it. */
-  const climbSpeed = () => Math.pow(config.speedRamp, Math.max(0, game.floor)) / config.climbTime;
+  /* How fast the world is falling away right now. It only ever grows. */
+  const scrollSpeed = () =>
+    Math.min(config.scrollMax, config.scrollStart + game.elapsed * config.scrollRamp);
+
+  /* The highest ledge at or below a floor in a lane. A gap has no ledge, so a
+   * climber standing over one falls straight through it. */
+  function ledgeBelow(lane, from) {
+    const floor = Math.floor(from);
+    for (let f = floor; f >= Math.floor(game.storm) - 3; f--) {
+      if (game.cells.get(`${lane}:${f}`) !== 'gap') return f;
+    }
+    return null;
+  }
 
   // ── input ──────────────────────────────────────────────────────────────────
 
@@ -898,34 +948,26 @@
     return true;
   }
 
-  /* Long enough to clear the next floor line whenever it is pressed. */
-  const jumpDuration = () => {
-    // LONG JUMP carries the arc over additional floor lines.
-    const spanFloors = 1 + game.upgrades.longJump;
-    const toNext = (Math.floor(game.floor) + spanFloors - game.floor) / climbSpeed();
-    return toNext + config.jumpClear;
-  };
-
+  /*
+   * A jump is the only thing that gains height. It carries the climber up a
+   * fixed number of floors and resolves whatever it lands on. DOUBLE JUMP
+   * buys another leap before touching down.
+   */
   function jump() {
-    if (!game.running) return false;
-    if (game.airborne > 0 && game.coyote <= 0) {
-      // DOUBLE JUMP spends an air jump; otherwise the press is buffered for
-      // landing, which is most of what "responsive" means in a platformer.
-      if (game.airJumps > 0) {
-        game.airJumps--;
-        game.airborne = jumpDuration();
-        game.jumpSpan = game.airborne;
-        sound('jump');
-        return true;
-      }
-      game.buffered = config.buffer;
+    if (!game.running || game.stun > 0) return false;
+    if (game.airborne > 0) {
+      if (game.airJumps <= 0) return false;
+      game.airJumps--;
+    } else if (!game.grounded && game.coyote <= 0) {
       return false;
+    } else {
+      game.airJumps = game.upgrades.doubleJump;
     }
-    game.airborne = jumpDuration();
-    game.jumpSpan = game.airborne;
-    game.airJumps = game.upgrades.doubleJump;
+    game.airborne = config.jumpRise;
+    game.jumpFrom = game.floor;
+    game.jumpTo = game.floor + config.jumpFloors + game.upgrades.longJump;
+    game.grounded = false;
     game.coyote = 0;
-    game.buffered = 0;
     sound('jump');
     return true;
   }
@@ -936,20 +978,21 @@
    * That is the only moment the grid is consulted, which is what makes the
    * whole thing deterministic and testable. */
   /*
-   * A jump SKIPS a floor rather than merely surviving it. Nothing on a skipped
-   * floor resolves — no spikes, and no energy either.
-   *
-   * The playtest asked what jump was for, and the honest answer was nothing: a
-   * clear lane is guaranteed on every floor, so swiping always sufficed.
-   * Skipping makes it a trade in the game's own currency — jump past a floor
-   * you cannot reach safely, and pay for it by leaving that floor's energy
-   * behind.
+   * Landing resolves the cell underfoot. This is the only place the grid is
+   * consulted, which is what keeps the simulation deterministic and free of
+   * continuous collision.
    */
-  function crossFloor(f) {
-    if (game.airborne > 0) { game.skipped++; return; }
+  function land() {
+    const f = Math.floor(game.floor + .0001);
+    const kind = game.cells.get(`${game.lane}:${f}`);
 
-    // MAGNET sweeps the neighbouring lanes on the way past.
-    // A burning cache lends the magnet's reach even without the perk.
+    if (kind === 'gap') { game.grounded = false; return; }   // nothing to stand on
+
+    game.floor = f;
+    game.grounded = true;
+    game.airJumps = 0;
+
+    // MAGNET, and a burning cache, sweep the neighbouring lanes on landing.
     const reach = Math.min(Math.max(game.upgrades.magnet, game.cache > 0 ? 1 : 0), config.lanes - 2);
     for (let r = 1; r <= reach; r++) {
       for (const lane of [game.lane - r, game.lane + r]) {
@@ -959,20 +1002,67 @@
       }
     }
 
-    const kind = game.cells.get(`${game.lane}:${f}`);
+    if (kind === 'energy' || kind === 'cache') return collect(game.lane, f);
+    if (kind === 'hazard') {
+      if (game.recover > 0) { showFeed('RECOVERING'); return; }
+      spiked();
+    }
+  }
 
-    if (kind === 'energy' || kind === 'cache') { collect(game.lane, f); return; }
-
-    /* Immune while recovering from the last slip, but still able to collect.
-     * Say so: an ignored gap otherwise reads as "the broken floor is not always
-     * working", which is exactly how it was reported. */
-    if (game.recover > 0) {
-      if (kind === 'gap' || kind === 'hazard') showFeed('RECOVERING');
+  /*
+   * Spikes take his footing, not a life. He is knocked off and falls until
+   * something catches him, which costs height — and height is what the sight
+   * line is eating.
+   *
+   * There is exactly one way to lose a life: dropping out of sight. Charging
+   * lives for spikes as well made three mistakes fatal and killed a scripted
+   * careful player at floor fifty, and it muddled the rule the player is meant
+   * to learn. One failure, one currency.
+   */
+  function spiked() {
+    if (game.shield) {
+      game.shield = false;
+      showFeed('SHIELD HELD');
+      sound('spend');
       return;
     }
+    game.slips++;
+    game.recover = config.recover;
+    game.stun = config.stun;
+    game.grounded = false;
+    game.airborne = 0;
+    game.floor -= config.hazardDrop;
+    shake = 1.4;
+    flash = 1;
+    sound('slip');
+    hurt('SPIKES — KNOCKED OFF');
+  }
 
-    if (kind === 'gap') return slip('SLIPPED');
-    if (kind === 'hazard') return slip('HIT');
+  /*
+   * Dropping out of sight costs a life and puts the climber back above the
+   * line rather than ending the run. Falling is the ordinary mistake in a game
+   * about jumping, so it has to be survivable a few times.
+   */
+  function lostToTheDrop() {
+    game.health--;
+    game.slips++;
+    game.recover = config.recover;
+    shake = 1.8;
+    flash = 1;
+    sound('slip');
+
+    if (game.health <= 0) {
+      return end('fell', 'OUT OF SIGHT', 'The tower left you behind.');
+    }
+
+    const target = Math.ceil(game.storm + config.respawnAbove);
+    const lane = [0, 1, 2].find(l => game.cells.get(`${l}:${target}`) !== 'gap');
+    game.lane = lane === undefined ? game.lane : lane;
+    game.floor = ledgeBelow(game.lane, target) ?? target;
+    game.grounded = true;
+    game.airborne = 0;
+    game.coyote = 0;
+    hurt('CAUGHT — A LIFE FOR A FOOTHOLD');
   }
 
   function collect(lane, f) {
@@ -1007,10 +1097,8 @@
     }
   }
 
-  /* Slipping is the only punishment in the game, and it is paid in the one
-   * currency that matters to the storm: height. */
   /* How much a fragment is worth right now, which is entirely a function of
-   * how close the storm is. */
+   * how close the sight line is. */
   function riskBand() {
     const gap = game.floor - game.storm;
     const boost = game.cache > 0 ? config.cacheMult : 1;
@@ -1020,71 +1108,59 @@
     return { within: Infinity, mult: config.baseMult * boost, label: boost > 1 ? 'CACHE' : '' };
   }
 
-  function slip(reason) {
-    if (game.shield) {
-      game.shield = false;
-      showFeed('SHIELD HELD');
-      sound('spend');
-      return;
-    }
-
-    // A streak of hits costs more each time, and clean climbing clears it.
-    if (game.floor - game.comboAt > config.comboWindow) game.combo = 0;
-    game.combo++;
-    game.comboAt = game.floor;
-
-    const base = Math.max(config.minSlip, config.slip - game.upgrades.anchor * config.anchorRelief);
-    const cost = Math.min(config.maxSlip, base * (1 + (game.combo - 1) * config.comboGrowth));
-
-    game.floor = Math.max(game.storm, game.floor - cost);
-    game.health--;
-    game.slips++;
-    game.recover = config.recover;
-    shake = 1.6 + game.combo * .3;
-    sound('slip');
-    flash = 1;                       // the climber flares red and drops
-    hurt(`${reason}  −${cost.toFixed(1)}${game.combo > 1 ? `  ×${game.combo} STREAK` : ''}`);
-
-    if (game.health <= 0) {
-      end('fell', 'YOU FELL', 'Three hits and the tower had you.');
-    }
-  }
-
   function tick(dt) {
     game.hintTime += dt;
-    const before = Math.floor(game.floor);
-    const speed = climbSpeed();
-    game.floor += speed * dt;
-    game.peak = Math.max(game.peak, game.floor);
-    const after = Math.floor(game.floor);
+    game.elapsed += dt;
 
-    // Airborne first, so a jump started this frame covers this frame's floor.
+    /* The world falls away whatever the player does. This is the pressure that
+     * replaces the old auto-climb: standing still is losing ground. */
+    game.storm += scrollSpeed() * dt;
+
+    const before = Math.floor(game.floor);
+
     if (game.airborne > 0) {
+      /* A leap is a fixed arc between two floors, so it always lands where it
+       * said it would — no drift, no "almost made it". */
       game.airborne = Math.max(0, game.airborne - dt);
-      if (game.airborne === 0) game.coyote = config.coyote;
-    } else if (game.coyote > 0) {
-      game.coyote = Math.max(0, game.coyote - dt);
+      const t = 1 - game.airborne / config.jumpRise;
+      game.floor = game.jumpFrom + (game.jumpTo - game.jumpFrom) * t;
+      if (game.airborne === 0) land();
+    } else if (!game.grounded) {
+      /*
+       * Land on the highest solid floor CROSSED this frame.
+       *
+       * The first version asked ledgeBelow for a resting place and landed when
+       * `floor <= rest` — but rest is floor(current), so that is only ever true
+       * at an exact integer and the climber sailed past every ledge to the
+       * sight line. Every knock-off was an instant death, which is why a
+       * careful scripted player was dying on floor five.
+       */
+      const from = game.floor;
+      game.floor -= config.fallSpeed * dt;
+      for (let f = Math.floor(from); f >= Math.floor(game.floor); f--) {
+        if (game.cells.get(`${game.lane}:${f}`) !== 'gap') { game.floor = f; land(); break; }
+      }
+    } else if (game.cells.get(`${game.lane}:${Math.floor(game.floor)}`) === 'gap') {
+      // A lane change stepped him over a gap; coyote time makes that forgiving.
+      game.coyote = config.coyote;
+      game.grounded = false;
     }
+
+    if (game.coyote > 0) game.coyote = Math.max(0, game.coyote - dt);
     if (game.recover > 0) game.recover = Math.max(0, game.recover - dt);
+    if (game.stun > 0) game.stun = Math.max(0, game.stun - dt);
     if (game.cache > 0) game.cache = Math.max(0, game.cache - dt);
     updateFlip(dt);
-    if (game.buffered > 0) {
-      game.buffered = Math.max(0, game.buffered - dt);
-      if (game.airborne === 0) { game.buffered = 0; game.airborne = jumpDuration(); game.jumpSpan = game.airborne; }
-    }
 
+    const after = Math.floor(game.floor);
     for (let f = before + 1; f <= after; f++) {
       if (!game.running) break;
-      crossFloor(f);
+      game.peak = Math.max(game.peak, f);
       if (f >= game.nextSplit) reachSplit(f);
     }
     ensureGenerated();
 
-    // The storm closes on you whatever you do.
-    game.storm += speed * game.stormFraction * dt;
-    if (game.running && game.storm >= game.floor) {
-      end('storm', 'THE STORM TOOK YOU', 'It was always going to be faster than you.');
-    }
+    if (game.running && game.floor <= game.storm) lostToTheDrop();
     if (game.running) checkMilestone();
     if (game.running && game.floor >= config.summit) summit();
 
@@ -1117,7 +1193,6 @@
     orbitTarget = orbitTarget > 0 ? -config.orbit : config.orbit;
     maybeStartFlip();
     game.nextSplit = sectionStart(f) + (sectionStart(f) === 0 ? config.firstSplit : config.splitEvery);
-    game.stormFraction += config.stormRampAdd;
 
     /* The lane you happen to be in is the route AND the upgrade. One decision,
      * made with the same swipe as everything else. */
@@ -1230,7 +1305,7 @@
 
     const gap = game.floor - game.storm;
     const band = game.running ? riskBand() : { mult: 1, label: '' };
-    ui.stormGap.textContent = `${gap.toFixed(1)}`;
+    ui.stormGap.textContent = `${Math.max(0, gap).toFixed(1)}`;
     ui.stormGap.parentElement.classList.toggle('close', band.mult >= 2);
     ui.stormGap.parentElement.classList.toggle('teeth', band.mult >= 4);
     ui.multiplier.textContent = `×${band.mult}`;
@@ -1357,24 +1432,13 @@
     game.laneVisual += (game.lane - game.laneVisual) * Math.min(1, dt * 18);
     const jumping = game.airborne > 0;
     const arc = jumping
-      ? Math.sin((1 - game.airborne / (game.jumpSpan || 1)) * Math.PI) * config.jumpHeight
+      ? Math.sin((1 - game.airborne / config.jumpRise) * Math.PI) * config.jumpHeight
       : 0;
-    /*
-     * The climb is STEPPED, not smooth. The simulation advances `floor`
-     * continuously — that stays exactly as it was, so nothing about collision
-     * or determinism changes — but the body is drawn lunging to the next ledge
-     * and settling on it.
-     *
-     * A playtest note: "there is no climbing action, just the whole thing move
-     * down by default". It was right. A body gliding upward at a constant rate
-     * past a scrolling wall is an elevator. A body that reaches, pulls, and
-     * lands on each ledge in turn is climbing, and it is the same number
-     * rendered differently.
-     */
-    const phase = game.floor - Math.floor(game.floor);
-    const pull = 1 - Math.pow(1 - phase, 2.4);      // fast lunge, then settle
-    const settle = Math.sin(Math.min(1, phase * 3.2) * Math.PI) * .06;
-    const climbY = jumping ? game.floor : Math.floor(game.floor) + pull;
+    /* The body is simply where the simulation puts it. The old stepped
+     * pull-up animated an auto-climb that no longer exists: every floor is a
+     * jump the player asked for, and the arc is the animation. */
+    const settle = 0;
+    const climbY = game.floor;
 
     climberMesh.position.set(laneX(game.laneVisual), climbY + .55 + arc - settle, .9);
     climberMesh.rotation.z = (game.lane - game.laneVisual) * .45;
@@ -1392,16 +1456,13 @@
       else if (o.userData.baseColor !== undefined) o.material.emissive.setHex(o.userData.baseColor);
     });
 
-    /* Hand over hand, in time with the pull rather than on a free-running
-     * sine: one arm is reaching for the next ledge while the other holds. */
+    /* Arms up and legs tucked in the air; braced and breathing on a ledge. */
     if (climberLimbs) {
-      const lead = Math.sin(phase * Math.PI * 2);
-      const tuck = jumping ? -1.1 : 0;
-      const reach = -1.5 * (1 - pull);              // arms high at the start of a pull
-      climberLimbs.armL.rotation.x = reach + lead * .5 + tuck;
-      climberLimbs.armR.rotation.x = reach - lead * .5 + tuck;
-      climberLimbs.legL.rotation.x = -lead * .55 - (jumping ? .9 : 0);
-      climberLimbs.legR.rotation.x = lead * .55 - (jumping ? .9 : 0);
+      const idle = Math.sin(clock * 2.6) * .16;
+      climberLimbs.armL.rotation.x = jumping ? -1.9 : idle;
+      climberLimbs.armR.rotation.x = jumping ? -1.9 : -idle;
+      climberLimbs.legL.rotation.x = jumping ? -.9 : 0;
+      climberLimbs.legR.rotation.x = jumping ? -.55 : 0;
     }
 
     // Blink while recovering, so immunity is visible rather than inferred.
@@ -1449,7 +1510,10 @@
     /* The climber sits low in frame so the player reads what is coming rather
      * than what is passed. Shake decays out of the value a slip sets. */
     shake = Math.max(0, shake - dt * 3.2);
-    const centre = game.floor + 2.1 + Math.sin(clock * 55) * shake * .3;
+    /* The camera rides the SIGHT LINE rather than the climber. The bottom of
+     * frame is what kills, so it is what has to be anchored — and it is what
+     * makes the drop legible as the climber slides toward it. */
+    const centre = game.storm + 6.4 + Math.sin(clock * 55) * shake * .3;
 
     /*
      * A slow swing around the tower at each split. Deliberately visual only:
@@ -1470,8 +1534,8 @@
     camera.updateProjectionMatrix();
 
     // The shadow camera is small, so the light has to travel with the climber.
-    keyLight.position.set(-6, game.floor + 10, 9);
-    keyLight.target.position.set(0, game.floor, 0);
+    keyLight.position.set(-6, centre + 8, 9);
+    keyLight.target.position.set(0, centre, 0);
     keyLight.target.updateMatrixWorld();
 
     // The storm lights the wall from below, brighter the closer it is.
@@ -1572,7 +1636,8 @@
       energy: game?.energy, shield: game?.shield, health: game?.health, combo: game?.combo,
       maxHealth: config.health,
       storm: game?.storm, stormGap: (game?.floor ?? 0) - (game?.storm ?? 0),
-      stormFraction: game?.stormFraction, climbSpeed: game ? climbSpeed() : 0, peak: game?.peak,
+      scrollSpeed: game ? scrollSpeed() : 0, peak: game?.peak,
+      grounded: game?.grounded, elapsed: game?.elapsed, stun: game?.stun,
       multiplier: game?.running ? riskBand().mult : 1, hint: game?.hint, mirrored: game?.mirrored,
       cache: game?.cache, caches: game?.caches,
       flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps, turns: game?.turns,
