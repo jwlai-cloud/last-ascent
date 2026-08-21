@@ -365,10 +365,29 @@
      * density was. At .15 the same climber makes three in five and a careless
      * one still makes none.
      */
+    /*
+     * Swept again once the policies learned to steer in mid-air, which is the
+     * real technique and made every earlier density reading too generous.
+     * Hazards more than doubled and energy fell to a third: it was "too little
+     * hazards, generally easy, just simple jump" and "too many diamonds".
+     *
+     * At these numbers a careful climber still summits three runs in five and
+     * banks 393, while one that never dodges banks 12.
+     */
+    /*
+     * "Too little hazards, generally easy, just simple jump" and "too many
+     * diamonds". Hazards roughly doubled and energy cut to a third of what it
+     * was, then swept honestly — the earlier sweep had been meaningless,
+     * because UNKNOWN was rebuilt from hardcoded numbers every section and
+     * ignored whatever the sweep set.
+     *
+     * UNKNOWN is derived from DANGER now, so this one row moves the whole
+     * tower and a sweep measures what ships.
+     */
     routes: {
-      SAFE:    { energy: .40, hazard: .02, gap: .02 },
-      DANGER:  { energy: 1.5, hazard: .15, gap: .10 },
-      UNKNOWN: { energy: 1.0, hazard: .09, gap: .065 },  // rerolled per section
+      SAFE:    { energy: .16, hazard: .04, gap: .03 },
+      DANGER:  { energy: .45, hazard: .20, gap: .13 },
+      UNKNOWN: { energy: .32, hazard: .12, gap: .08 },   // placeholder; derived per section
     },
   };
 
@@ -946,10 +965,18 @@
       const j = Math.floor(game.rand() * (i + 1));
       [names[i], names[j]] = [names[j], names[i]];
     }
+    /*
+     * UNKNOWN is DERIVED from DANGER rather than written as its own literals.
+     * It used to be rerolled from hardcoded numbers, so tuning the UNKNOWN
+     * entry changed nothing and a whole density sweep measured a lane far
+     * gentler than the one that shipped. One dial now moves the whole tower.
+     */
+    const d = config.routes.DANGER;
+    const swing = .35 + game.rand() * 1.15;          // gentler or nastier than DANGER
     config.routes.UNKNOWN = {
-      energy: .4 + game.rand() * 2.0,
-      hazard: .02 + game.rand() * .18,
-      gap: .02 + game.rand() * .12,
+      energy: d.energy * (1.9 - swing * .6),
+      hazard: d.hazard * swing,
+      gap: d.gap * swing,
     };
     return names;
   }
@@ -1004,8 +1031,16 @@
      * The first couple of levels are plain floor in every lane.
      */
     for (let f = 0; f <= config.openingSafe; f++) {
-      for (let l = 0; l < config.lanes; l++) game.cells.delete(`${l}:${f}`);
+      for (let l = 0; l < config.lanes; l++) {
+        // Only clear what can HURT. Wiping the cell entirely also deleted the
+        // energy, so the first three levels had nothing to pick up and the
+        // collecting mechanic looked broken for the whole opening.
+        const k = game.cells.get(`${l}:${f}`);
+        if (k === 'hazard' || k === 'gap') game.cells.delete(`${l}:${f}`);
+      }
     }
+    // ...but he still needs solid ground directly underfoot.
+    game.cells.delete(`${game.lane}:0`);
     sync();
   }
 

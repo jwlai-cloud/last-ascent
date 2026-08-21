@@ -676,6 +676,32 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   check('riding the line says what it is paying', /×4|x4/.test(teeth || ''), teeth);
 }
 
+/* The opening must be safe to stand in but still worth collecting from. The
+ * safe-start code cleared the cells outright, which also deleted the energy,
+ * so the first three levels had nothing to pick up and collecting looked
+ * broken for the whole opening — reported as exactly that. */
+{
+  const opening = await run(() => {
+    const a = window.ascent;
+    let hazards = 0, energy = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      a.start(seed); a.pause(true); a.mute(true);
+      for (let f = 0; f <= 2; f++) {
+        for (const l of [0, 1, 2]) {
+          const k = a.cellAt(l, f);
+          if (k === 'hazard' || k === 'gap') hazards++;
+          if (k === 'energy' || k === 'cache') energy++;
+        }
+      }
+    }
+    return { hazards, energy };
+  });
+  check('nothing can hurt you in the opening levels', opening.hazards === 0,
+    `${opening.hazards} hazards or gaps found in levels 0-2 across 12 seeds`);
+  check('but there is still something to collect there', opening.energy > 0,
+    `${opening.energy} pickups across 12 seeds`);
+}
+
 check('no runtime errors', errors.length === 0, errors.join(' | '));
 
 await page.screenshot({ path: 'tests/last-run.png' });
