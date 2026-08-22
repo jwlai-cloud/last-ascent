@@ -421,6 +421,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     const a = window.ascent, out = {};
     a.setEnergy(100);
     out.start = a.getState().energy;
+    out.collectedStart = a.getState().collected;
 
     a.buy('shield');
     out.shielded = a.getState().shield;
@@ -440,6 +441,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
 
     out.spent = a.getState().spent;
     out.left = a.getState().energy;
+    out.collected = a.getState().collected;
     return out;
   });
   check('SHIELD absorbs a hit instead of a knock-down',
@@ -482,9 +484,12 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   check('GRAPPLE onto spikes still hurts', pulled.hurt === 1, `${pulled.hurt} life`);
   check('GRAPPLE over a gap drops you through it',
     pulled.fell.to < pulled.fell.from, `level ${pulled.fell.from} -> ${pulled.fell.to}`);
+  /* Net of anything picked up on the way — GRAPPLE resolves what it lands on,
+   * so a spend-only sum is short by whatever it collected. */
+  const picked = spends.collected - spends.collectedStart;
   check('every spend comes off the energy you are scored on',
-    spends.left === spends.start - spends.spent,
-    `${spends.start} - ${spends.spent} = ${spends.left}`);
+    spends.left === spends.start - spends.spent + picked,
+    `${spends.start} - ${spends.spent} spent + ${picked} collected = ${spends.left}`);
 }
 
 {

@@ -102,7 +102,13 @@
      * At half a second the best possible pace is two floors a second and the
      * scroll tops out just under it, so the last stretch is genuinely close.
      */
-    jumpRise: .20,           // seconds a leap takes — the ceiling rises with the line
+    /*
+     * Paced for a human thumb. At .20 the optimal cadence was a jump every
+     * 0.15s — nearly seven presses a second, which nobody sustains, and which
+     * only looked playable because a held key auto-repeated. At .38 the best
+     * possible pace is about 2.6 levels a second, which a fast tap can match.
+     */
+    jumpRise: .38,           // seconds a leap takes
     fallSpeed: 4,            // floors per second with nothing underfoot
     /*
      * What spikes cost. Knocking the climber down a single floor made mistakes
@@ -402,9 +408,9 @@
       * difficulty a human will feel — it is the point past which the tower
       * stops being beatable at all.
       */
-      SAFE:    { energy: .13, hazard: .06, gap: .04 },
-      DANGER:  { energy: .32, hazard: .32, gap: .20 },
-      UNKNOWN: { energy: .22, hazard: .19, gap: .12 },   // placeholder; derived per section
+      SAFE:    { energy: .13, hazard: .055, gap: .036 },
+      DANGER:  { energy: .32, hazard: .28,  gap: .175 },
+      UNKNOWN: { energy: .22, hazard: .17,  gap: .11 },   // placeholder; derived per section
     },
 
     /*
@@ -420,7 +426,13 @@
      * and the top is genuinely dense.
      */
     dangerFloor: .30,        // multiplier on hazards and gaps at level zero
-    dangerCeiling: 1.9,      // and at the summit — the top is meant to be nasty
+    /*
+     * Eased when the leap slowed to a human rhythm. The old density was tuned
+     * against a bot managing a jump every 0.15s — a cadence only reachable
+     * because a held key auto-repeated. At half that climb speed the same
+     * density took a careful climber from seven summits in ten to one.
+     */
+    dangerCeiling: 1.7,      // and at the summit — the top is meant to be nasty
   };
 
   const colors = {
@@ -1791,6 +1803,15 @@
     ui.buyGrapple.addEventListener('click', () => buy('grapple'));
 
     window.addEventListener('keydown', e => {
+      /*
+       * Ignore auto-repeat. Without this, HOLDING space fires keydown at the
+       * operating system's repeat rate and calls jump() every time, so the
+       * player could hold one key and the tower climbed itself — which is the
+       * exact model this game was rewritten to get rid of, quietly restored by
+       * a missing three-word guard. Every difficulty reading taken before this
+       * was measured against a game that could be held down.
+       */
+      if (e.repeat) return;
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLane(-1);
       if (e.code === 'ArrowRight' || e.code === 'KeyD') moveLane(1);
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); jump(); }
