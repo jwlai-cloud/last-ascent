@@ -295,7 +295,35 @@ showed a sliver; the spare-shield pips were on the back of the pack, where the
 camera never sees them. A marker behind the model is the same as no marker, and
 the seam reported both as correctly visible.
 
-## Session 14 — submission artifacts
+## Session 14 — warnings where the eyes actually are
+
+*"My focus is on the man and nearby levels, hard to read notice and warning at
+top, that's why I need some indicator on the man, like the shield with green
+ball."*
+
+Every warning lived on the hint line at the top of a 860px portrait screen. The
+player's eyes are on the climber and the two or three levels around him, so a
+turn telegraphed for 1.6 seconds was telegraphed somewhere nobody was looking.
+
+The fix deliberately does **not** invent a second priority ladder. `hint()`
+already ranks every warning and tags it with a tone; the alert ring renders
+*that* at the climber's feet as colour and pulse — red for a threat, violet and
+spinning for an incoming turn, gold for a burning cache — with pulse rate tied
+to the same rank. The text stays for anyone who wants to read it. A test
+asserts the two can never disagree.
+
+Two things the work turned up:
+
+- **A dead entry in the tone map.** `close` was mapped to a colour but sits at
+  rank 3, below the rank-4 gate, so it could never fire. A map entry that
+  cannot fire is a lie about what the ring can say.
+- **The camera is anchored to the storm, not the climber** (`centre =
+  game.storm + 6.4`). A screenshot taken after `setStorm(-400)` showed an empty
+  scene and looked like a serious rendering bug; it is a test-seam artifact,
+  since no player can push the line 400 levels down. Worth knowing before the
+  next person loses an hour to it.
+
+## Session 15 — submission artifacts
 
 Packaging and zip verification were ported from `../beanstalk` where they were
 already proven. `npm run test:package` runs the guidance's own six-step

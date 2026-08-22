@@ -944,6 +944,78 @@ const climbTo = (target, opts = {}) => {
     air.readyWhileFalling === 'ready' && air.afterSpending === 'spent' && air.used,
     JSON.stringify(air));
 
+  /*
+   * THE ALERT RING.
+   *
+   * "My focus is on the man and nearby levels, hard to read notice and warning
+   * at top." Warnings lived only on the hint line, which is outside where the
+   * player is looking — a turn telegraphed for 1.6 seconds is worth nothing if
+   * the telegraph is somewhere nobody looks. The ring renders hint()'s own
+   * ranking at the climber's feet, so these assert the two agree.
+   */
+  {
+    /* Self-contained: hint() holds a line for hintDwell (3.2s) before a calmer
+     * one may take the slot, so a two-frame step still reads the PREVIOUS
+     * warning. Every case here settles the line before asserting on it. */
+    await fresh();
+    await run(() => { window.ascent.pause(true); window.ascent.mute(true); window.ascent.setStorm(-400); });
+
+    const quiet = await run(() => {
+      const a = window.ascent, s0 = a.getState();
+      for (const l of [0, 1, 2]) a.setCell(l, s0.floorInt + 1, null);
+      a.step(0.05, 90);                              // past hintDwell
+      return { alert: a.getState().worn.alert, rank: a.getState().hintRank };
+    });
+    check('the ring stays dark when nothing is urgent', quiet.alert === null,
+      `alert ${quiet.alert} at rank ${quiet.rank}`);
+
+    const spikes = await run(() => {
+      const a = window.ascent, s0 = a.getState();
+      a.setCell(s0.lane, s0.floorInt + 1, 'hazard');
+      a.step(0.02, 2);
+      return { alert: a.getState().worn.alert, line: document.getElementById('routeHint').textContent };
+    });
+    check('spikes above light the ring at the climber, not only the line at the top',
+      spikes.alert === 'danger', `ring ${spikes.alert}, line "${spikes.line}"`);
+
+    /* The one that matters most: the world is about to move and the player has
+     * 1.6 seconds to pick a lane, spent looking at the climber. Turns are armed
+     * at a split, and the first split always turns, so this has to CLIMB to
+     * reach one rather than wait in place. */
+    await fresh();
+    const turning = await run(() => {
+      const a = window.ascent;
+      a.pause(true); a.mute(true); a.setStorm(-400);
+      for (let i = 0; i < 6000; i++) {
+        const s = a.getState();
+        if (!s.running) break;
+        if (s.flipPhase === 'warn') break;
+        if (s.grounded) a.jump();
+        a.step(0.02);
+      }
+      const s = a.getState();
+      return { phase: s.flipPhase, alert: s.worn.alert, floor: s.floorInt, running: s.running };
+    });
+    check('an incoming turn shows on the climber', turning.alert === 'turning',
+      `phase ${turning.phase}, ring ${turning.alert}, at level ${turning.floor}`);
+
+    /* And it must render hint()'s ladder rather than run its own. */
+    const agree = await run(() => ({
+      ring: window.ascent.getState().worn.alert,
+      line: document.getElementById('routeHint').className,
+    }));
+    check('the ring never disagrees with the hint line',
+      agree.ring === null || agree.line.includes(agree.ring), `${agree.ring} vs "${agree.line}"`);
+
+    await run(() => { window.ascent.setFlip(0.55, false); });
+  }
+
+  await fresh();
+  await run(() => {
+    const a = window.ascent; a.pause(true); a.mute(true);
+    for (const [id, n] of [['airSave',1],['magnet',1],['spring',3],['grip',2],['spareShield',2]]) a.grant(id, n);
+  });
+
   /* A perk removed must remove its marker, or the climber lies about what he
    * has — the same class of bug as a collected fragment left in the scene. */
   const cleared = await run(() => {

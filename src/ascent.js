@@ -485,6 +485,16 @@
     kitSpent: 0x4c5470,
   };
 
+  /* The alert ring's colour per hint tone. Same tones the hint line uses, so
+   * the ring and the text can never disagree about how bad things are. */
+  /* Only tones that can actually reach ALERT_RANK. 'close' sits at rank 3 and
+   * could never fire, and a map entry that cannot fire is a lie about what the
+   * ring can say. */
+  const ALERT = { danger: colors.hazard, turning: colors.unknown, cache: colors.cache };
+  /* Below this rank the hint is informational — a route name, a nudge — and a
+   * ring that is always lit is a ring nobody looks at. */
+  const ALERT_RANK = 4;
+
   const ui = Object.fromEntries([
     'game', 'floor', 'energy', 'health', 'best', 'stormGap', 'multiplier', 'feed', 'routeHint',
     'buyShield', 'costShield',
@@ -758,6 +768,24 @@
       // GRIP — gloves. It changes what happens when he takes a hit, so: hands.
       gloveL: mesh(new T.BoxGeometry(.14, .13, .14), kitMat(colors.kitGrip), climberMesh, -.24, .16, .04),
       gloveR: mesh(new T.BoxGeometry(.14, .13, .14), kitMat(colors.kitGrip), climberMesh, .24, .16, .04),
+      /*
+       * THE ALERT RING.
+       *
+       * Warnings lived only on the hint line at the top of the screen, and
+       * "my focus is on the man and nearby levels, hard to read notice and
+       * warning at top" is the whole problem with that: the player's eyes are
+       * on the climber and the two or three levels around him, and a line of
+       * text eight hundred pixels away is outside that. A turn telegraphed for
+       * 1.6 seconds is worth nothing if the telegraph is somewhere nobody is
+       * looking.
+       *
+       * This does not invent a second priority ladder — it renders the one
+       * hint() already computes, at the climber's feet, as colour and pulse.
+       * The text stays where it is for anyone who wants to read it; this is
+       * the same information where the eyes already are.
+       */
+      ring: mesh(new T.TorusGeometry(.54, .085, 8, 24), kitMat(colors.hazard), climberMesh, 0, -.42, 0),
+
       /* SPARE SHIELD — pips on the SHOULDERS, one per stack. They were on the
        * back of the pack, where the camera never sees them: a marker behind
        * the model is the same as no marker. */
@@ -765,7 +793,9 @@
         climberMesh, i ? .21 : -.21, .42, .06)),
     };
     kit.halo.rotation.x = Math.PI / 2;
-    for (const m of [kit.cap, kit.halo, kit.bootL, kit.bootR, kit.gloveL, kit.gloveR, ...kit.spare]) {
+    kit.ring.rotation.x = Math.PI / 2;
+    kit.ring.material.transparent = true;
+    for (const m of [kit.cap, kit.halo, kit.ring, kit.bootL, kit.bootR, kit.gloveL, kit.gloveR, ...kit.spare]) {
       m.visible = false;
     }
 
@@ -1566,6 +1596,27 @@
       if (m.visible) m.material.emissiveIntensity = glow(u.grip);
     }
     kit.spare.forEach((m, i) => wear(m, u.spareShield > i, colors.energy));
+
+    /* The ring mirrors hint()'s own ranking rather than re-deciding urgency.
+     * Colour says what kind of trouble, pulse rate says how urgent, and a turn
+     * additionally spins it — the one warning that is about the world moving
+     * rather than about the level above. */
+    const rank = game.hintRank ?? -1;
+    const tone = game.hintTone || '';
+    const alert = game.running && rank >= ALERT_RANK && ALERT[tone] !== undefined;
+    kit.ring.visible = alert && on;
+    if (kit.ring.visible) {
+      const hex = ALERT[tone];
+      kit.ring.material.color.setHex(hex);
+      kit.ring.material.emissive.setHex(hex);
+      const beat = .5 + Math.sin(clock * (4 + rank)) * .5;    // higher rank, faster
+      /* Bold on purpose. This is replacing a line of text the player told us
+       * they cannot read while playing, so a subtle ring fails the same way. */
+      kit.ring.material.emissiveIntensity = .8 + beat * 1.3;
+      kit.ring.material.opacity = .75 + beat * .25;
+      kit.ring.scale.setScalar(1 + beat * .18);
+      kit.ring.rotation.z = tone === 'turning' ? clock * 3.4 : 0;
+    }
   }
 
   // ── ending ─────────────────────────────────────────────────────────────────
@@ -2005,6 +2056,7 @@
       cache: game?.cache, caches: game?.caches,
       flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps, turns: game?.turns,
       upgrades: game && { ...game.upgrades }, usedAirSave: game?.usedAirSave,
+      hintRank: game?.hintRank, hintTone: game?.hintTone || '',
       /* What the climber is visibly WEARING, as opposed to what he owns. The
        * two drifting apart is the bug this exists to catch. */
       worn: kit && {
@@ -2013,6 +2065,9 @@
         spring: kit.bootL.visible,
         grip: kit.gloveL.visible,
         spare: kit.spare.filter(m => m.visible).length,
+        /* What the ring is saying, so a test can assert the warning reached
+         * the climber and not only the hint line at the top. */
+        alert: kit.ring.visible ? (game?.hintTone || '') : null,
       },
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
