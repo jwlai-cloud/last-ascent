@@ -22,8 +22,8 @@ Every other climbing prototype rewards climbing fast. This one does not:
 The thing that kills you is the thing that pays you, so outrunning the storm
 means outrunning your own income, and the skill is riding just above the front.
 It makes the storm gap the most *interesting* number on screen rather than
-merely the scariest, and it turns SURGE into a dilemma — it saves your life and
-cuts your pay.
+merely the scariest, and it turns the shield into a dilemma — it saves your
+life and cuts your pay, out of the same number.
 
 Combined with the second rule — energy is simultaneously the score and the only
 survival budget — every decision in the game is the same decision, asked at

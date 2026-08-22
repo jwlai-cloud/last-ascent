@@ -39,8 +39,8 @@ From the official design guidance, for Survival & Resource Management:
 > through crafting, refining or upgrading; a threat that escalates and that the
 > player manages against.
 
-Here: collecting energy fragments; converting energy into shields, surges and
-heals; the storm rising from below. If a change weakens any of the three, it is
+Here: collecting energy fragments; converting energy into shields; the storm
+rising from below. If a change weakens any of the three, it is
 wrong regardless of how good it feels.
 
 ## Explicitly out of scope

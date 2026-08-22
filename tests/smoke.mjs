@@ -114,11 +114,10 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
      * Steering only while grounded burns the beat and is strictly worse. */
     if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
     if (s.grounded) a.jump();
-    // A real climber spends to survive; without SURGE the line eventually wins
-    // and the helper reports a design failure that is really a policy gap.
+    // A real climber spends to survive. One spend now, so the policy is
+    // simply: shield when the next hit would end the run and you can pay.
     if (opts.keepEnergy !== undefined) a.setEnergy(opts.keepEnergy);
     else if (s.health <= 1 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
-    else if (s.stormGap < 1.6 && s.energy >= s.cost.surge) a.buy('surge');
     a.step(0.05); n++;
   }
 };`;
@@ -431,14 +430,6 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     for (let i = 0; i < 400 && !a.getState().grounded; i++) a.step(0.02);
     out.afterHit = { shield: a.getState().shield, slips: a.getState().slips };
 
-    const gapBefore = a.getState().stormGap;
-    a.buy('surge');
-    out.surge = +(a.getState().stormGap - gapBefore).toFixed(2);
-
-    const floorBefore = a.getState().floor;
-    a.buy('grapple');
-    out.grapple = +(a.getState().floor - floorBefore).toFixed(2);
-
     out.spent = a.getState().spent;
     out.left = a.getState().energy;
     out.collected = a.getState().collected;
@@ -447,45 +438,10 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   check('SHIELD absorbs a hit instead of a knock-down',
     spends.shielded && spends.afterHit.slips === 0 && !spends.afterHit.shield,
     JSON.stringify(spends.afterHit));
-  check('SURGE pushes the line back', spends.surge > 1, `gap +${spends.surge}`);
-  check('GRAPPLE buys height directly', spends.grapple >= 2, `+${spends.grapple} levels`);
+  /* SURGE and GRAPPLE were deleted, so their tests are too. Keeping a test for
+   * a feature that no longer exists is how a suite starts lying. */
 
-  /* And it resolves what it pulls you onto, exactly as a landing does. It used
-   * to add two to the height and nothing else, so a grapple onto a fragment
-   * did not collect it, a grapple onto spikes was free, and a grapple over a
-   * gap left the climber standing on air. */
-  const pulled = await run(() => {
-    const a = window.ascent, out = {};
-
-    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
-    let st = a.getState();
-    a.setCell(st.lane, st.floorInt + 2, 'energy');
-    const before = a.getState().energy;
-    a.buy('grapple');
-    out.collected = a.getState().energy - (before - a.getState().cost.grapple);
-
-    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
-    st = a.getState();
-    a.setCell(st.lane, st.floorInt + 2, 'hazard');
-    const lives = a.getState().health;
-    a.buy('grapple');
-    out.hurt = lives - a.getState().health;
-
-    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
-    st = a.getState();
-    a.setCell(st.lane, st.floorInt + 2, 'gap');
-    a.buy('grapple');
-    const airborneAt = a.getState().floorInt;
-    for (let i = 0; i < 200 && !a.getState().grounded; i++) a.step(0.02);
-    out.fell = { from: airborneAt, to: a.getState().floorInt };
-    return out;
-  });
-  check('GRAPPLE collects what it lands on', pulled.collected >= 1, `+${pulled.collected} energy`);
-  check('GRAPPLE onto spikes still hurts', pulled.hurt === 1, `${pulled.hurt} life`);
-  check('GRAPPLE over a gap drops you through it',
-    pulled.fell.to < pulled.fell.from, `level ${pulled.fell.from} -> ${pulled.fell.to}`);
-  /* Net of anything picked up on the way — GRAPPLE resolves what it lands on,
-   * so a spend-only sum is short by whatever it collected. */
+  /* Net of anything picked up on the way. */
   const picked = spends.collected - spends.collectedStart;
   check('every spend comes off the energy you are scored on',
     spends.left === spends.start - spends.spent + picked,
@@ -496,9 +452,57 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   await fresh();
   const refused = await run(() => {
     window.ascent.setEnergy(0);
-    return [window.ascent.buy('shield'), window.ascent.buy('surge'), window.ascent.buy('grapple')];
+    return window.ascent.buy('shield');
   });
-  check('spends are refused without energy', refused.every(r => r === false), refused.join(','));
+  check('the spend is refused without energy', refused === false, String(refused));
+}
+
+/*
+ * The spend has to be reachable, which is the reason two of them were deleted.
+ * A scripted run spent zero energy in twenty eight seconds while able to
+ * afford a shield for most of it, because the thumb never leaves the jump and
+ * three small buttons at the bottom of a portrait screen are not reachable
+ * mid-climb. So: one spend, on a key, and both routes tested.
+ */
+{
+  await fresh();
+  await run(() => { window.ascent.pause(true); window.ascent.mute(true); window.ascent.setEnergy(200); });
+
+  const before = await state();
+  await page.keyboard.press('KeyS');
+  const afterKey = await state();
+  check('S buys a shield without letting go of the jump',
+    afterKey.shield && afterKey.spent - before.spent === before.cost.shield,
+    `spent ${afterKey.spent - before.spent}`);
+
+  /* Auto-repeat must not drain the bank. The jump had exactly this bug: holding
+   * a key fired the handler at the OS repeat rate. */
+  await page.keyboard.down('KeyS');
+  await page.waitForTimeout(400);
+  await page.keyboard.up('KeyS');
+  const held = await state();
+  check('holding S does not buy repeatedly', held.spent === afterKey.spent,
+    `spent ${held.spent} after holding`);
+
+  await run(() => { window.ascent.grant('spareShield', 0); window.ascent.setEnergy(200); });
+  const dbl = await run(() => window.ascent.buy('shield'));
+  check('a second shield cannot be stacked', dbl === false);
+
+  const btn = await run(() => {
+    const b = document.getElementById('buyShield');
+    const r = b.getBoundingClientRect();
+    return { w: r.width, h: r.height, kbd: b.querySelector('kbd')?.textContent,
+             others: document.querySelectorAll('.spend').length };
+  });
+  /* One spend, not three. If a fourth button appears this fails, which is the
+   * point: Focus is scored and re-growing the panel should be deliberate. */
+  check('exactly one spend button, thumb-sized, showing its key',
+    btn.others === 1 && btn.kbd === 'S' && btn.h >= 44 && btn.w > 200,
+    `${btn.others} button, ${Math.round(btn.w)}x${Math.round(btn.h)}, key ${btn.kbd}`);
+
+  const costs = await run(() => Object.keys(window.ascent.getState().cost));
+  check('the config carries one cost and no orphans', costs.length === 1 && costs[0] === 'shield',
+    costs.join(','));
 }
 
 // ── caches ──────────────────────────────────────────────────────────────────
@@ -646,7 +650,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     `banked ${won.banked} holding ${won.energy}`);
   check('reaching the summit sets the best', (await state()).best === won.banked);
   check('no spends after the run is over',
-    (await run(() => { window.ascent.setEnergy(500); return window.ascent.buy('surge'); })) === false);
+    (await run(() => { window.ascent.setEnergy(500); return window.ascent.buy('shield'); })) === false);
 }
 
 // ── balance regression ──────────────────────────────────────────────────────
@@ -671,11 +675,10 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
         // Steer in the air; never spend a grounded frame on a lane change.
         if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
         if (s.grounded) a.jump();
-        /* A careful player shields when low and surges when crowded. Without
-         * these the policy is not careful, it is merely well-steered, and it
-         * loses to a reckless climber that never spends time repositioning. */
+        /* A careful player shields when low. Without it the policy is not
+         * careful, it is merely well-steered, and it loses to a reckless
+         * climber that never spends time repositioning. */
         if (mode !== 'blind' && s.health <= 2 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
-        else if (s.stormGap < 1.6 && s.energy >= s.cost.surge) a.buy('surge');
         a.step(0.05); t += 0.05;
       }
       return a.getState();
@@ -782,6 +785,11 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     named(copy.text, copy.milestone, 'thirtieth', 'twentieth'), `every ${copy.milestone}`);
   check('the tutorial does not still claim the climb is automatic',
     !/cannot stop climbing|skips the whole/i.test(copy.text));
+  /* The spend went unused partly because the tutorial never mentioned it. */
+  check('the tutorial names the spend and the key that fires it',
+    /shield/i.test(copy.text) && /\bS\b/.test(copy.text), copy.text.match(/[^.]*SHIELD[^.]*/i)?.[0] ?? 'no mention');
+  check('the tutorial does not still promise the deleted spends',
+    !/surge|grapple/i.test(copy.text));
 }
 
 /*
@@ -791,7 +799,8 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
  * playing rather than by this suite: a sidestep onto a fragment did not collect
  * it, a grapple onto one did not either, and a grapple onto spikes was free.
  * Each had a hand-written test for the arrival it happened to be written for
- * and none for the others, so the gaps were invisible.
+ * and none for the others, so the gaps were invisible. (GRAPPLE has since been
+ * deleted; the two arrivals that remain are still enumerated the same way.)
  *
  * This enumerates the matrix instead of guessing at it. Anything that reaches a
  * cell must resolve it the same way.
@@ -807,7 +816,6 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
         const to = st.lane === 0 ? 1 : st.lane - 1;
         a.moveLane(Math.sign(to - st.lane));
       },
-      grapple: st => { a.buy('grapple'); },
     };
     const out = [];
     for (const arrival of Object.keys(arrivals)) {
@@ -815,8 +823,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
         a.start(9); a.pause(true); a.mute(true);
         a.setStorm(-400);                       // isolate from the line
         const st0 = a.getState();
-        const lvl = arrival === 'grapple' ? st0.floorInt + 2
-          : arrival === 'jump' ? st0.floorInt + 1 : st0.floorInt;
+        const lvl = arrival === 'jump' ? st0.floorInt + 1 : st0.floorInt;
         const lane = arrival === 'sidestep' ? (st0.lane === 0 ? 1 : st0.lane - 1) : st0.lane;
         for (const l of [0, 1, 2]) a.setCell(l, lvl, l === lane ? kind : null);
         a.grant('magnet', 0);                   // no sweeping; test the cell itself
@@ -828,8 +835,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
         const after = a.getState();
         out.push({
           arrival, kind: kind ?? 'empty',
-          /* Net of whatever the arrival itself cost, or a grapple looks like it
-           * collected two hundred because the test funded it. */
+          /* Net of whatever the arrival itself cost. */
           gained: (after.energy + (after.spent - spentBefore)) - before.energy,
           lostLife: before.health - after.health,
           cleared: a.cellAt(lane, lvl) === null,
@@ -840,7 +846,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
   });
 
   const find = (arrival, kind) => matrix.find(r => r.arrival === arrival && r.kind === kind);
-  for (const arrival of ['jump', 'sidestep', 'grapple']) {
+  for (const arrival of ['jump', 'sidestep']) {
     const e = find(arrival, 'energy'), c = find(arrival, 'cache'), h = find(arrival, 'hazard');
     check(`arriving by ${arrival} collects energy`, e.gained >= 1 && e.cleared,
       `gained ${e.gained}, cell cleared ${e.cleared}`);

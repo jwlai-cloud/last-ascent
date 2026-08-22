@@ -13,7 +13,7 @@ npm run test:package   # packaging, then the suite against the packaged build,
                        # then the guidance's own six-step procedure on the zip
 ```
 
-Current: **7/7 packaging · 70/70 smoke · 9/9 zip.**
+Current: **7/7 packaging · 80/80 smoke · 9/9 zip.**
 
 `npm run test:smoke` alone is not sufficient — it tests `src/`, and the
 submitted `index.html` is a different file.
@@ -26,8 +26,10 @@ submitted `index.html` is a different file.
 | 2 | Design intent, 500 words max, text-only `.docx` | `submission/last-ascent-design-intent.docx` | ✅ 463 words, official 7-section template, no identifying metadata |
 | 3 | Build log, markdown | `BUILD_LOG.md` | ✅ two-part format per the official guidance |
 
-Edit `submission/design-intent.txt` and regenerate the `.docx`; never hand-edit
-the `.docx`.
+Edit `submission/design-intent.txt`, then `npm run docx`. Never hand-edit the
+`.docx` — it is generated, and the generator enforces the 500-word limit and
+writes no `docProps`, so there is no `dc:creator` or `lastModifiedBy` to leak
+into an anonymised judging round.
 
 ## What packaging already checks
 
@@ -59,14 +61,18 @@ The dials, in the order worth reaching for:
 
 | Dial | Now | Effect |
 |---|---|---|
-| `dangerCeiling` | 1.9 | Hazard density at the summit; does not touch the opening |
+| `cost.shield` | 18 | **Reach for this first.** With one spend left, the price *is* the hit budget: a climb absorbs ~9 hits, so 20 gave the bot 0 summits and 10 gave it 7 |
+| `dangerCeiling` | 1.35 | Hazard density at the summit; does not touch the opening. Trades directly against `cost.shield` |
 | `dangerFloor` | 0.30 | Hazard density at level zero |
-| `routes.DANGER.hazard` | 0.32 | The base rate. **0.34 made it unwinnable for the bot** |
-| `scrollStart` / `scrollMax` | 1.3 / 1.7 | The line. Above roughly 1.9 no play keeps up |
+| `routes.DANGER.hazard` | 0.28 | The base rate |
+| `scrollStart` / `scrollMax` | 1.3 / 1.7 | The line. **`scrollMax` does not move the bot at all** — a policy that jumps every grounded frame is never caught by it, so every scripted death is a spike or a gap. Tune it against a person, not against the suite |
 
 ## Still open
 
-1. **The playtest gate — five full runs.** Not done. Every substantial bug on
+1. **The playtest gate — five full runs.** Not done, and now overdue for two
+   reasons rather than one: holding a key used to auto-repeat the jump, so
+   every difficulty impression formed before that fix was of a game that
+   climbed itself; and the spend panel just went from three buttons to one. Every substantial bug on
    this project was found by a person playing, not by the suite: the flat-sky
    fog, the capsule climber, uncollected diamonds, a grapple that resolved
    nothing. The suite is good at stopping regressions and structurally poor at

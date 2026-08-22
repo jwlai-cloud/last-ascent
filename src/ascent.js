@@ -240,7 +240,8 @@
      * one punishes it: outrun the storm and you outrun your own income, so the
      * skill is riding just above the front. It makes the storm gap the most
      * interesting number on screen rather than merely the scariest, and it
-     * turns SURGE into a real dilemma — it saves your life and cuts your pay.
+     * turns the shield into a real dilemma — it saves your life and cuts your
+     * pay, out of the same number.
      */
     riskBands: [
       { within: 1.5, mult: 4, label: 'IN THE TEETH' },
@@ -342,17 +343,31 @@
     turnSwing: 1.25,         // radians the camera swings during a turn — never past edge-on
     hintDwell: 3.2,          // seconds a coaching line holds before a calmer one takes the slot
 
-    // Energy is the score AND the survival budget. One resource, three spends.
+    // Energy is the score AND the survival budget. One resource, one spend.
     /*
-     * Three spends with genuinely distinct jobs — preventive, reactive, and
-     * progress. "Heal" was cut with the health pips; a second way to undo a
-     * slip would have done the same job as surge.
+     * There were three — SHIELD, SURGE and GRAPPLE — and measurement killed
+     * two of them. A scripted run spent zero energy across twenty eight
+     * seconds while able to afford a shield 84% of that time, because the
+     * thumb never leaves the jump and three small buttons at the bottom of a
+     * portrait screen are not reachable mid-climb. Three spends that never
+     * fire are worse than one that does: they are the "six things that each
+     * half-work" the guidance names, and Focus is scored.
+     *
+     * What survives is the preventive one, on a key, dear enough to hurt.
+     * SURGE pushed the storm back, which is the multiplier the game is built
+     * on — paying to reduce your own pay rate needed a second of thought the
+     * player does not have. GRAPPLE bought height, and height is free: press
+     * the jump. Neither loss removes a decision that was actually being made.
      */
-/* Dearer, because energy is scarcer and a bonus that is always affordable is
-     * not a decision. */
-    cost: { shield: 9, surge: 12, grapple: 15 },
-    surgePush: 1.5,          // floors the storm is knocked back — exactly one slip
-    grappleClimb: 2,         // floors gained instantly: energy bought as height
+    /*
+     * Eighteen, double the nine it cost when there were three spends. It is
+     * the only sink for energy now, so its price alone sets how many hits a
+     * run can absorb: a full climb needs roughly nine of them, and the
+     * scripted climber can afford one only a tenth of the time. That is the
+     * decision — at nine it was reflex, at twenty-plus the tower became
+     * unwinnable for the bot (0 summits in 10 seeds against a target of 2).
+     */
+    cost: { shield: 18 },
     /*
      * Scaled to the tower, not a flat number. At a flat 50 across 300 levels a
      * careful climber who spent everything staying alive banked 47 while a
@@ -432,7 +447,16 @@
      * because a held key auto-repeated. At half that climb speed the same
      * density took a careful climber from seven summits in ten to one.
      */
-    dangerCeiling: 1.7,      // and at the summit — the top is meant to be nasty
+    /*
+     * 1.35, down from 1.7, and the reason is the spend cut rather than mercy.
+     * SURGE was the scripted climber's constant crutch — it bought back the
+     * storm gap every time the line closed — and deleting it removed far more
+     * survivability than deleting a button should suggest. At 1.7 with the
+     * dearer shield the summit went unreached on all ten seeds. Density and
+     * shield price now trade against each other honestly: fewer hits to take,
+     * each one dearer to prevent.
+     */
+    dangerCeiling: 1.35,     // and at the summit — the top is still 4.5x the base
   };
 
   const colors = {
@@ -444,7 +468,7 @@
 
   const ui = Object.fromEntries([
     'game', 'floor', 'energy', 'health', 'best', 'stormGap', 'multiplier', 'feed', 'routeHint',
-    'buyShield', 'buySurge', 'buyGrapple', 'costShield', 'costSurge', 'costGrapple',
+    'buyShield', 'costShield',
     'startModal', 'modalButton', 'modalTitle', 'modalCopy', 'modalIcon', 'modalKicker',
     'reset', 'mute', 'summitGoal', 'splitChoice', 'pick0', 'pick1', 'pick2',
     'climbFill', 'climbNext', 'turnWarn', 'cacheChip', 'orient',
@@ -1423,17 +1447,6 @@
     game.spent += config.cost[kind];
     sound('spend');
     if (kind === 'shield') { game.shield = true; showFeed('SHIELDED'); }
-    if (kind === 'surge') { game.storm -= config.surgePush; showFeed('SURGE'); }
-    if (kind === 'grapple') {
-      /* Resolve where it puts you, exactly as a landing does. It used to add
-       * two to the height and nothing else, so a grapple onto a fragment did
-       * not collect it, a grapple onto spikes was free, and a grapple over a
-       * gap left the climber standing on air. */
-      game.airborne = 0;
-      game.floor = Math.floor(game.floor + .0001) + config.grappleClimb;
-      showFeed('GRAPPLE');
-      land();
-    }
     sync();
     return true;
   }
@@ -1519,16 +1532,14 @@
     ui.multiplier.className = `multiplier${band.mult >= 4 ? ' teeth' : band.mult >= 2 ? ' close' : ''}`;
 
     ui.costShield.textContent = config.cost.shield;
-    ui.costSurge.textContent = config.cost.surge;
-    ui.costGrapple.textContent = config.cost.grapple;
-    /* A disabled button that says nothing teaches nothing. Each one now states
-     * either what it does or exactly how much more energy it needs. */
-    for (const [kind, btn] of [['shield', ui.buyShield], ['surge', ui.buySurge], ['grapple', ui.buyGrapple]]) {
-      const afford = canAfford(kind);
-      btn.disabled = !afford;
-      const short = config.cost[kind] - game.energy;
-      const note = btn.querySelector('small');
-      if (kind === 'shield' && game.shield) note.textContent = 'active';
+    /* A disabled button that says nothing teaches nothing: it states either
+     * what it does or exactly how much more energy it needs. */
+    {
+      const afford = canAfford('shield');
+      ui.buyShield.disabled = !afford;
+      const short = config.cost.shield - game.energy;
+      const note = ui.buyShield.querySelector('small');
+      if (game.shield) note.textContent = 'active';
       else if (!afford && short > 0) note.textContent = `need ${short} more`;
       else note.textContent = note.dataset.label;
     }
@@ -1601,6 +1612,12 @@
     }
     if (game.flipPhase === 'turn') return [9, 'HOLD ON', 'turning'];
 
+    /* Rank 6 — above the per-level threats, below a turn. The single spend
+     * only earns its place if the player is told when it is worth making, and
+     * one life with a shield affordable is exactly that moment. */
+    if (game.health === 1 && canAfford('shield')) {
+      return [6, `ONE LIFE LEFT — PRESS S TO SHIELD (${config.cost.shield})`, 'danger'];
+    }
     if (game.health === 1) return [5, 'ONE LIFE LEFT — reach the next milestone to patch up', 'danger'];
 
     if (game.cache > 0) return [4, `CACHE BURNING — dive at the storm, everything pays ×${riskBand().mult}`, 'cache'];
@@ -1799,8 +1816,6 @@
       if (!muted) sound('spend');
     });
     ui.buyShield.addEventListener('click', () => buy('shield'));
-    ui.buySurge.addEventListener('click', () => buy('surge'));
-    ui.buyGrapple.addEventListener('click', () => buy('grapple'));
 
     window.addEventListener('keydown', e => {
       /*
@@ -1815,6 +1830,15 @@
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLane(-1);
       if (e.code === 'ArrowRight' || e.code === 'KeyD') moveLane(1);
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); jump(); }
+
+      /*
+       * The shield on a key, because on the button alone it was dead weight —
+       * a scripted run spent nothing in twenty eight seconds while able to
+       * afford one for most of it, since the thumb never leaves the jump. S
+       * sits under the left hand already resting on A and D, so shielding
+       * costs no jump.
+       */
+      if (e.code === 'KeyS') buy('shield');
     });
 
     /* Swipe or tap, on the arena only. A short movement is a tap and jumps; a

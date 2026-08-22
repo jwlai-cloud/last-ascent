@@ -135,7 +135,6 @@ const won = await page.evaluate(() => {
       if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
       if (s.grounded) a.jump();
       if (s.health <= 2 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
-      else if (s.stormGap < 1.6 && s.energy >= s.cost.surge) a.buy('surge');
       a.step(0.05); n++;
     }
     return a.getState();

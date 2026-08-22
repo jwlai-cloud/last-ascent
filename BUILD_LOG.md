@@ -36,15 +36,15 @@ Re-read at the start of each session. Mirrored in `CLAUDE.md`.
 - **Spikes cost a life, 2.2 levels and a stun. Falling below the line costs a
   life** and returns you four levels above it. Three lives, one healed per
   milestone.
-- **Danger ramps with height**, 0.30× at the bottom to 1.9× at the summit.
+- **Danger ramps with height**, 0.30× at the bottom to 1.35× at the summit.
 - **Milestones every 30 levels snapshot the score.** Dying keeps the last
   snapshot and loses everything since.
 - **Summit at 300.**
 
 ## Controls
 
-SPACE or tap to leap. A / D or swipe to change lane. Three spends: SHIELD 9,
-SURGE 12, GRAPPLE 15. Reset arms on the first tap.
+SPACE or tap to leap. A / D or swipe to change lane. **One spend: SHIELD, 18,
+on the S key or a full-width button.** Reset arms on the first tap.
 
 ## The rules that protect Playability
 
@@ -195,7 +195,41 @@ whole scene is relationally a no-op. Reported precisely: *"lane composition
 still the same, only key direction flip."* It mirrors the lane contents above
 the climber now, telegraphed for 1.6 seconds.
 
-## Session 11 — submission artifacts
+## Session 11 — cutting two spends, and what the cut cost
+
+Three spends were measured and two were deleted. A scripted run spent **zero
+energy across twenty eight seconds** while able to afford a shield for 84% of
+it, because the thumb never leaves the jump and three small buttons at the
+bottom of a portrait screen are not reachable mid-climb. Three spends that
+never fire are the "six things that each half-work" the guidance names.
+
+SHIELD survives, on the **S** key, at **18** — double its old price, because it
+is the only sink for energy now. SURGE paid to push back the storm, which is
+the multiplier the whole game is built on: paying to reduce your own pay rate
+needed a second of thought the player does not have. GRAPPLE bought height, and
+height is free — press the jump.
+
+**The cut was much larger than it looked, and only measurement showed it.**
+SURGE was the scripted climber's constant crutch; without it, at the shipping
+density, the summit went unreached on all ten seeds. Two findings came out of
+the sweep that followed:
+
+- **`scrollMax` does nothing to the bot.** 1.7 and 1.55 gave byte-identical
+  results, because a policy that jumps on every grounded frame is never caught
+  by the line. Every death is a spike or a gap. A dial that cannot move the
+  measurement is not a difficulty dial for that measurement.
+- **The shield's price *is* the hit budget.** A full climb absorbs about nine
+  hits, so cost and hazard density are the same knob viewed from two ends.
+  Density fell to 1.35 and the price doubled: fewer hits to take, each one
+  dearer to prevent. Careful play now banks 91 against a blind climber's 15,
+  where before the cut the two sat at 22 and 16.
+
+The suite lost the SURGE and GRAPPLE tests — keeping tests for deleted features
+is how a suite starts lying — and gained tests that the spend is *reachable*:
+that S buys it, that holding S does not buy repeatedly, that exactly one spend
+button exists at thumb size showing its key, and that the tutorial names it.
+
+## Session 12 — submission artifacts
 
 Packaging and zip verification were ported from `../beanstalk` where they were
 already proven. `npm run test:package` runs the guidance's own six-step
@@ -226,6 +260,8 @@ A log that lists only successes is not evidence of a process.
 | GRAPPLE not resolving where it landed | No | The human: "won't claim the diamond" |
 | Destroying the source with an empty-string replace | N/A | A syntax error, then `git checkout` |
 | A staleness guard that had itself gone stale | Yes | The suite failed |
+| Holding a key auto-repeated the jump, so the tower climbed itself | No | Playing it after the rewrite |
+| Three spends that no player could reach mid-climb | No | Instrumenting a run for energy actually spent |
 
 The pattern: the model's errors clustered where the code was *locally* correct
 and *systemically* wrong, and where a measurement was trusted without checking
