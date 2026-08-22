@@ -451,6 +451,26 @@
      */
     dangerFull: 80,
     /*
+     * CAMERA FRAMING.
+     *
+     * The view is anchored to the storm, not the climber, and deliberately so:
+     * the line is the clock, and holding it at a fixed place on screen is what
+     * makes closing on it feel like closing on it.
+     *
+     * But it was anchored to the storm and NOTHING ELSE, with no clamp, and a
+     * climber gains on the line at roughly a level a second — so a competent
+     * run spent about 80% of its frames with the climber above the top of the
+     * frame, and past a gap of about 16 he was not on screen at all. Invisible
+     * is not the same as penalised: outrunning the storm is meant to cost the
+     * multiplier, not the ability to see yourself.
+     *
+     * camAnchor keeps the storm-anchored framing exactly as it was inside the
+     * zone the game is actually played in, and camLead takes over past that,
+     * so the climber is always framed with room above him to aim into.
+     */
+    camAnchor: 6.4,          // levels above the storm the view centres on when near it
+    camLead: 1.0,            // levels below the climber it centres on once he has outrun it
+    /*
      * Eased when the leap slowed to a human rhythm. The old density was tuned
      * against a bot managing a jump every 0.15s — a cadence only reachable
      * because a held key auto-repeated. At half that climb speed the same
@@ -1213,6 +1233,7 @@
     }
     // ...but he still needs solid ground directly underfoot.
     game.cells.delete(`${game.lane}:0`);
+    buildSummitFigure();
     sync();
   }
 
@@ -1432,6 +1453,13 @@
     return { within: Infinity, mult: config.baseMult * boost, label: boost > 1 ? 'CACHE' : '' };
   }
 
+  /* Pure, and shared by the renderer and the test seam, so what a test reads
+   * is what the camera is actually doing rather than a copy that can drift. */
+  function cameraCentre() {
+    if (!game) return config.camAnchor;
+    return Math.max(game.storm + config.camAnchor, game.floor - config.camLead);
+  }
+
   function tick(dt) {
     game.hintTime += dt;
     game.elapsed += dt;
@@ -1621,6 +1649,43 @@
 
   // ── ending ─────────────────────────────────────────────────────────────────
 
+  /*
+   * THE PERSON AT THE TOP.
+   *
+   * The summit used to be an abstraction: a number, and a glowing ball that
+   * only existed once you had already won. "Reach level 300" is a target, not
+   * a reason. Someone standing up there — built at reset, so they are on the
+   * tower from the first frame and come into view as you climb — turns the
+   * goal into a thing you can look at, which is the one visual bar the
+   * guidance actually sets.
+   *
+   * This is framing, and it is deliberately ONLY framing. They cannot be hurt,
+   * they do not move, there is no escort, no rescue timer and no second win
+   * condition. The moment this grows a mechanic it stops being a reason to
+   * climb and becomes a second game to half-finish, which is the exact failure
+   * the Focus criterion is scored on.
+   */
+  function buildSummitFigure() {
+    const g = new T.Group();
+    g.position.set(0, config.summit + 1, 0);      // tower centre, on top of the last ledge
+    game.props.add(g);
+    const coat = mat(colors.beacon, .55);
+    coat.emissive = new T.Color(colors.beacon);
+    coat.emissiveIntensity = .35;
+    mesh(new T.SphereGeometry(.19, 12, 10), coat, g, 0, .5, 0);
+    mesh(new T.BoxGeometry(.32, .42, .25), coat, g, 0, .19, 0);
+    // Arms up. At a distance the silhouette has to say "someone is up there".
+    mesh(new T.BoxGeometry(.1, .34, .1), coat, g, -.26, .42, 0).rotation.z = .5;
+    mesh(new T.BoxGeometry(.1, .34, .1), coat, g, .26, .42, 0).rotation.z = -.5;
+    /* A standing light beside them, so they are findable against the tower
+     * from further away than the figure itself reads at. */
+    const lamp = mesh(new T.SphereGeometry(.16, 10, 8),
+      new T.MeshBasicMaterial({ color: colors.beacon }), g, .5, .2, 0);
+    game.spins.push(lamp);
+    lamp.userData.baseY = .2;
+    game.summitFigure = g;
+  }
+
   function summit() {
     const g = new T.Group();
     g.position.set(laneX(game.lane), config.summit + 1, .5);
@@ -1629,7 +1694,7 @@
     b.material.emissive = new T.Color(colors.beacon);
     b.material.emissiveIntensity = .9;
     sound('summit');
-    end('summit', 'ESCAPED', `Beacon lit with ${game.energy} energy still in hand, plus a ${config.summitBonus} summit bonus.`);
+    end('summit', 'REACHED THEM', `You got to the top with ${game.energy} energy still in hand, plus a ${config.summitBonus} summit bonus.`);
   }
 
   function end(kind, title, copy) {   // eslint-disable-line no-unused-vars
@@ -1911,7 +1976,7 @@
     /* The camera rides the SIGHT LINE rather than the climber. The bottom of
      * frame is what kills, so it is what has to be anchored — and it is what
      * makes the drop legible as the climber slides toward it. */
-    const centre = game.storm + 6.4 + Math.sin(clock * 55) * shake * .3;
+    const centre = cameraCentre() + Math.sin(clock * 55) * shake * .3;
 
     /*
      * A slow swing around the tower at each split. Deliberately visual only:
@@ -2057,6 +2122,10 @@
       flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps, turns: game?.turns,
       upgrades: game && { ...game.upgrades }, usedAirSave: game?.usedAirSave,
       hintRank: game?.hintRank, hintTone: game?.hintTone || '',
+      /* Where the camera is looking, so a test can assert the climber is
+       * inside the frame rather than assume it. */
+      cameraCentre: game ? cameraCentre() : null,
+      cameraHalfHeight: camera ? Math.tan(camera.fov * Math.PI / 360) * 13 : null,
       /* What the climber is visibly WEARING, as opposed to what he owns. The
        * two drifting apart is the bug this exists to catch. */
       worn: kit && {
@@ -2069,6 +2138,11 @@
          * the climber and not only the hint line at the top. */
         alert: kit.ring.visible ? (game?.hintTone || '') : null,
       },
+      /* The person at the top, so a test can assert they are on the tower from
+       * the start rather than conjured at the moment of winning. */
+      summitFigure: game?.summitFigure
+        ? { y: game.summitFigure.position.y, visible: game.summitFigure.visible }
+        : null,
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
       routes: game && routesAt(game.floor), routesAhead: game && routesAt(game.floor + config.splitEvery),

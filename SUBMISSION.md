@@ -13,7 +13,7 @@ npm run test:package   # packaging, then the suite against the packaged build,
                        # then the guidance's own six-step procedure on the zip
 ```
 
-Current: **7/7 packaging · 88/88 smoke · 9/9 zip.**
+Current: **7/7 packaging · 94/94 smoke · 9/9 zip.**
 
 `npm run test:smoke` alone is not sufficient — it tests `src/`, and the
 submitted `index.html` is a different file.
@@ -67,6 +67,7 @@ The dials, in the order worth reaching for:
 | `dangerFloor` | 0.30 | Hazard density at level zero |
 | `routes.DANGER.hazard` | 0.28 | The base rate |
 | — | — | **Sealed floors measure 0% up to a 2.4 ceiling**, so density is hard rather than unfair. Check that before pushing it |
+| `camAnchor` / `camLead` | 6.4 / 1.0 | Framing. `camAnchor` is the storm-anchored view the game is played in; `camLead` is the clamp that stops a fast climber leaving the frame. **Raising `camAnchor` without checking `camLead` can hide the climber again** |
 | `scrollStart` / `scrollMax` | 1.3 / 1.7 | The line. **`scrollMax` does not move the bot at all** — a policy that jumps every grounded frame is never caught by it, so every scripted death is a spike or a gap. Tune it against a person, not against the suite |
 
 ## Still open

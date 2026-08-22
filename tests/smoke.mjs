@@ -1030,6 +1030,131 @@ const climbTo = (target, opts = {}) => {
 }
 
 /*
+ * THE CLIMBER MUST BE ON SCREEN.
+ *
+ * The camera is anchored to the storm — deliberately, since the line is the
+ * clock — but it had no clamp, and a climber gains on the line at roughly a
+ * level a second. A competent run spent about 80% of its frames with the
+ * climber above the top of the frame, and past a gap of ~16 he was not drawn
+ * at all. Nothing in the suite noticed, because every other test asks the
+ * simulation what happened rather than whether it could be seen.
+ */
+{
+  const framing = await run(`(() => {
+    ${BEST_LANE}
+    const a = window.ascent;
+    const rows = [];
+    for (const seed of [1, 7, 13, 21]) {
+      a.start(seed); a.pause(true); a.mute(true);
+      let t = 0, worstAbove = 0, worstBelow = 0, offFrames = 0, frames = 0, maxGap = 0;
+      while (a.getState().running && t < 600) {
+        const s = a.getState();
+        const want = bestLane(a, s) ?? s.lane;
+        if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
+        if (s.grounded) a.jump();
+        if (s.health <= 2 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
+        /* How far the climber sits from the middle of the frame, in the same
+         * units as the camera's visible half-height. */
+        const off = s.floor - s.cameraCentre;
+        worstAbove = Math.max(worstAbove, off);
+        worstBelow = Math.min(worstBelow, off);
+        if (Math.abs(off) > s.cameraHalfHeight) offFrames++;
+        maxGap = Math.max(maxGap, s.stormGap);
+        frames++;
+        a.step(0.05); t += 0.05;
+      }
+      rows.push({ seed, worstAbove: +worstAbove.toFixed(1), worstBelow: +worstBelow.toFixed(1),
+                  offPct: Math.round(100 * offFrames / frames), maxGap: +maxGap.toFixed(1),
+                  half: +a.getState().cameraHalfHeight.toFixed(1) });
+    }
+    return rows;
+  })()`);
+
+  const worstOff = Math.max(...framing.map(r => r.offPct));
+  const half = framing[0].half;
+  check('the climber is never outside the camera frame',
+    worstOff === 0,
+    framing.map(r => `seed ${r.seed}: ${r.offPct}% off, worst ${r.worstAbove}/${r.worstBelow} vs half-height ${r.half}, maxGap ${r.maxGap}`).join(' | '));
+
+  /* And with margin — level with the top edge is still unplayable, because the
+   * levels being jumped INTO are what has to be visible, not just the feet. */
+  const worstAbove = Math.max(...framing.map(r => r.worstAbove));
+  check('there is room above the climber to aim into',
+    worstAbove <= half - 3, `worst ${worstAbove.toFixed(1)} of a ${half} half-height`);
+
+  /* The storm-anchored framing must survive unchanged where the game is
+   * actually played, or the clamp has quietly redesigned the feel. */
+  const near = await run(() => {
+    const a = window.ascent, out = [];
+    a.start(1); a.pause(true); a.mute(true);
+    for (const gap of [0, 2, 4]) {
+      a.setStorm(a.getState().floor - gap);
+      const s = a.getState();
+      out.push({ gap, centre: +(s.cameraCentre - (s.floor - gap)).toFixed(2) });
+    }
+    return out;
+  });
+  check('close to the line the framing is unchanged — still storm-anchored',
+    near.every(r => Math.abs(r.centre - 6.4) < 0.001),
+    near.map(r => `gap ${r.gap}: centre storm+${r.centre}`).join(', '));
+}
+
+/*
+ * THE PERSON AT THE TOP.
+ *
+ * The summit was a number and a glowing ball that only existed once you had
+ * already won, which is a target rather than a reason. These assert the figure
+ * is on the tower from the first frame — a goal you cannot see until you have
+ * reached it is not a goal — and that they stay framing rather than growing a
+ * mechanic.
+ */
+{
+  await fresh();
+  const fig = await run(() => {
+    const a = window.ascent, s = a.getState();
+    return { figure: s.summitFigure, summit: s.summit, floor: s.floorInt };
+  });
+  check('someone is standing at the summit from the first frame',
+    fig.figure && fig.figure.visible && Math.abs(fig.figure.y - (fig.summit + 1)) < 0.001,
+    `${JSON.stringify(fig.figure)} at level ${fig.floor} of ${fig.summit}`);
+
+  /* A rescue that can fail separately from the climb is a second win
+   * condition and a second game. The only way to end a run stays the climb. */
+  const outcomes = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    const kinds = new Set();
+    for (const seed of [1, 7, 13, 21, 33, 41, 55, 68]) {
+      a.start(seed); a.pause(true); a.mute(true);
+      climbTo(a.getState().summit);
+      kinds.add(a.getState().over);
+    }
+    return [...kinds];
+  })()`);
+  /* Exactly two ways out, both of them the climb: 'fell' (spikes took the last
+   * life, or the line left you behind) and 'summit'. If a third ever appears
+   * here, something grew a second failure state. */
+  check('the figure adds no way to lose that the climb did not already have',
+    outcomes.every(k => ['summit', 'fell', null].includes(k)), outcomes.join(','));
+
+  /* And reaching them has to be the same event as reaching the top — not a
+   * separate thing to trigger. */
+  const won = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    for (const seed of [1, 7, 13, 21, 33, 41, 55, 68]) {
+      a.start(seed); a.pause(true); a.mute(true);
+      climbTo(a.getState().summit);
+      const r = a.getState();
+      if (r.over === 'summit') return { over: r.over, title: document.getElementById('modalTitle').textContent };
+    }
+    return null;
+  })()`);
+  check('the win names the person rather than the beacon',
+    won && /BANKED|REACHED/.test(won.title), won ? won.title : 'no summit in eight seeds');
+}
+
+/*
  * The scene must agree with the grid. A collected fragment once stayed on
  * screen because the cell was deleted and the mesh was not, and a mirroring
  * turn moved the ledges while leaving the spikes behind — both invisible to a

@@ -43,7 +43,11 @@ Re-read at the start of each session. Mirrored in `CLAUDE.md`.
   play around; AIR SAVE in particular changes state mid-fall.
 - **Milestones every 30 levels snapshot the score.** Dying keeps the last
   snapshot and loses everything since.
-- **Summit at 300.**
+- **Summit at 300, and someone is standing on it.** Built at reset so they are
+  on the tower from the first frame. Framing only — they cannot be hurt, there
+  is no escort and no second win condition.
+- **The climber is always on screen.** The camera is storm-anchored, but
+  clamped so outrunning the line costs the multiplier and never the view.
 
 ## Controls
 
@@ -323,7 +327,57 @@ Two things the work turned up:
   since no player can push the line 400 levels down. Worth knowing before the
   next person loses an hour to it.
 
-## Session 15 — submission artifacts
+## Session 15 — a reason to climb, and a camera that lost the player
+
+*"What will be the winning ending? Does it require the game to play forever?"*
+
+It does not. The rules require a *"clear goal and a win, lose, or reset
+state"* — **or**, not and — and progression *"within a single play session"*,
+which is also why there is no meta-progression tree. The summit, the two loss
+states and reset already satisfied it.
+
+The second question was better: *"should we have something at the 300 level
+top, someone you will save?"* The argument against is our own working
+agreement — a story that lives in a sprite is decoration, and Focus is scored.
+The argument for won: the summit was a number and a glowing ball that only
+existed **after** you had won, which is a target rather than a reason. Someone
+standing up there, built at reset so they are on the tower from the first
+frame, makes the goal a thing you can look at.
+
+It is framing and only framing: no escort, no NPC that can be hurt, no rescue
+timer, no second win condition. A test asserts the set of run-ending kinds is
+still exactly `fell` and `summit`, so a second failure state cannot appear
+quietly.
+
+**And building it exposed the worst bug in the project.**
+
+A screenshot taken near the summit came back with no climber in it. The camera
+is anchored to the storm — `centre = game.storm + 6.4` — deliberately, since
+the line is the clock and pinning it on screen is what makes closing on it feel
+like closing on it. But it was anchored to the storm and nothing else, with no
+clamp, and a climber gains on the line at roughly a level a second.
+
+Measured across four seeds of competent play:
+
+| Seed | reached | max gap | frames with the climber off the top |
+|---:|---:|---:|---:|
+| 1 | 111 | 50.6 | **81%** |
+| 7 | 67 | 35.6 | **79%** |
+| 13 | 24 | 15.2 | 30% |
+| 21 | 146 | 75.4 | **83%** |
+
+Past a gap of about 16 he was not drawn at all. Outrunning the storm is
+supposed to cost the multiplier, not the ability to see yourself.
+
+`camLead` clamps it: inside the zone the game is actually played in the
+framing is byte-identical to before, and past that the camera follows the
+climber. A test now asserts the climber stays inside the frame across full
+runs with three levels of margin above him, because **every other test in the
+suite asks the simulation what happened rather than whether it could be seen**
+— which is exactly why 94 checks passed over a game that was invisible for
+four fifths of a run.
+
+## Session 16 — submission artifacts
 
 Packaging and zip verification were ported from `../beanstalk` where they were
 already proven. `npm run test:package` runs the guidance's own six-step
@@ -361,6 +415,7 @@ A log that lists only successes is not evidence of a process.
 | `keepEnergy` silently disabling shielding in a test helper | No | It only started failing once the tower got harder |
 | Upgrades with no visible state at all | No | The human: "there is no notification like a shield" |
 | A marker mesh placed behind the model, reported as visible by the seam | No | Looking at a screenshot |
+| The camera losing the climber for ~80% of a competent run | No — 94 checks passed over it | A screenshot with no climber in it |
 
 The pattern: the model's errors clustered where the code was *locally* correct
 and *systemically* wrong, and where a measurement was trusted without checking
