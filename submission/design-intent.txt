@@ -13,11 +13,11 @@ Press SPACE, or tap, to leap exactly one level. Steer with A and D, or swipe. Yo
 Jump, pick a lane, land, take what is there. Ledges are safe, spikes cost a life and your footing, and a gap drops you through. The storm rises faster than it did a moment ago and never stops, so standing still is losing. Every fourteen levels the three lanes split into safe, danger and unknown, each holding a different upgrade, so one swipe chooses your route and your perk together. Sometimes the tower turns and the lanes come back reversed, with a second and a half of warning. Reach level 300 and light the beacon; run out of lives and keep only what you had banked.
 
 5. What is in this prototype
-Implemented and playable: jump-driven climbing across three lanes, an accelerating storm line, ledges, spikes, gaps and falls, energy with a proximity multiplier, supply caches, five stacking upgrades taken at lane splits, one spend, ten banking milestones, the tower turn, the summit and its beacon, persistent best score, reset, and synthesised sound.
+Implemented and playable: jump-driven climbing across three lanes, an accelerating storm line, ledges, spikes, gaps and falls, energy with a proximity multiplier, supply caches, five stacking upgrades taken at lane splits and worn visibly by the climber, one spend, ten banking milestones, the tower turn, the summit and its beacon, persistent best score, reset, and synthesised sound.
 Not yet in: a second tower, hazards beyond spikes and gaps, and a soundtrack.
 
 6. Progression and signature twist
 The storm accelerates, hazard density rises with height, and the upgrades you pick stack against both. The signature mechanic is that energy is worth more the closer the storm is: double within three levels, quadruple within one and a half. The thing chasing you is the thing paying you, so climbing hard outruns your own income and the skill is riding just above the front. It makes the shield a real loss, because the energy that buys your survival is the score you came for. There were three spends and two were cut after measurement showed nobody could reach them mid-climb: one that fires beats three that do not.
 
 7. Future-state vision
-The full game keeps one tower and one climber and deepens the reasons to stay low, so a run is still a few minutes and a best score is still worth chasing.
+The full game keeps one tower and one climber and deepens the reasons to stay low, so a run stays a few minutes and a best score stays worth chasing.

@@ -36,7 +36,11 @@ Re-read at the start of each session. Mirrored in `CLAUDE.md`.
 - **Spikes cost a life, 2.2 levels and a stun. Falling below the line costs a
   life** and returns you four levels above it. Three lives, one healed per
   milestone.
-- **Danger ramps with height**, 0.30× at the bottom to 1.35× at the summit.
+- **Danger ramps with height and reaches full early** — 0.30× at level zero to
+  1.2× by level 80, then a plateau. It used to ramp across all 300 levels,
+  which made the first two thirds read as easy.
+- **Every upgrade is worn.** A perk the player cannot see is a perk they cannot
+  play around; AIR SAVE in particular changes state mid-fall.
 - **Milestones every 30 levels snapshot the score.** Dying keeps the last
   snapshot and loses everything since.
 - **Summit at 300.**
@@ -229,7 +233,69 @@ is how a suite starts lying — and gained tests that the spend is *reachable*:
 that S buys it, that holding S does not buy repeatedly, that exactly one spend
 button exists at thumb size showing its key, and that the tutorial names it.
 
-## Session 12 — submission artifacts
+## Session 12 — the ramp, and letting a weak bot set the design
+
+*"Why so little hazard now? Too easy."* — and the answer was that the model had
+cut density to satisfy a measurement rather than a player.
+
+**The scripted climber looked exactly one level ahead.** A lane clear now and
+blocked above trapped it every time, so it was a far weaker player than a
+person — and when deleting SURGE dropped it to zero summits, the density was
+lowered to buy them back. At the *same* setting, one-level scored 0 summits and
+75 average levels where a four-level lookahead scored 2 and 159. **The tower
+was never too dense; the instrument was too blind, and a real design change was
+made to satisfy it.** The suite reads four levels ahead now — roughly what fits
+on the portrait screen, roughly what a person works from.
+
+Fixing the instrument also exposed a helper bug: `climbTo` had
+`if (keepEnergy) setEnergy(...) else if (health <= 1) buy('shield')`, so any
+test pinning energy never shielded at all. It survived while the tower was
+gentle and started failing the moment it was not, which reads as a difficulty
+problem and is a one-word bug.
+
+Then the real complaint: *"still easy until 200 level."* Correct, and
+arithmetic confirmed it — danger ramped linearly to the **summit**, so level
+200 sat at 1.23 of an eventual 1.7 and half the climb was below what level 150
+felt like. Difficulty now reaches full at `dangerFull: 80` and plateaus:
+
+| Level | before | now |
+|---:|---:|---:|
+| 25 | 0.42 | **0.58** |
+| 50 | 0.53 | **0.86** |
+| 100 | 0.77 | **1.20** |
+| 200 | 1.23 | 1.20 |
+
+Hard early rather than impossible late — steepening the ramp while keeping a
+1.7 top put the summit out of reach of every policy available.
+
+**Sealed floors measure 0% at every density tested up to 2.4**, so the
+generator always leaves a lane and high density is hard rather than unfair.
+That is the number to check before pushing density again.
+
+## Session 13 — the upgrades nobody could see
+
+*"When can air save be used? There is no notification like a shield. Maybe give
+the man a dress or flying hat."*
+
+Exactly right, and the worst case named first: the shield had a bubble, the
+five split perks had nothing, and AIR SAVE is the only one whose state changes
+*during* a fall — the moment you need to know whether you still have it is the
+moment you are falling.
+
+Each perk is now something the climber wears, on a different part of the
+silhouette so they stack without merging: a flight cap (AIR SAVE), a halo
+(MAGNET), boots (SPRING), gloves (GRIP), shoulder pips (SPARE SHIELD). The cap
+is lit while the extra press is in hand and goes dead grey the instant it is
+spent. One function drives all of it from state, so a new perk is one line
+rather than a new system.
+
+**Two placement bugs were caught by looking at a screenshot, not by the tests.**
+The cap was centred below the crown of the head, so it buried its own base and
+showed a sliver; the spare-shield pips were on the back of the pack, where the
+camera never sees them. A marker behind the model is the same as no marker, and
+the seam reported both as correctly visible.
+
+## Session 14 — submission artifacts
 
 Packaging and zip verification were ported from `../beanstalk` where they were
 already proven. `npm run test:package` runs the guidance's own six-step
@@ -262,6 +328,11 @@ A log that lists only successes is not evidence of a process.
 | A staleness guard that had itself gone stale | Yes | The suite failed |
 | Holding a key auto-repeated the jump, so the tower climbed itself | No | Playing it after the rewrite |
 | Three spends that no player could reach mid-climb | No | Instrumenting a run for energy actually spent |
+| Cutting hazard density to satisfy a bot that could not see past one level | No | The human: "why so little hazard now?" |
+| Danger ramping to the summit, so two thirds of the climb was easy | No | The human: "still easy until 200 level" |
+| `keepEnergy` silently disabling shielding in a test helper | No | It only started failing once the tower got harder |
+| Upgrades with no visible state at all | No | The human: "there is no notification like a shield" |
+| A marker mesh placed behind the model, reported as visible by the seam | No | Looking at a screenshot |
 
 The pattern: the model's errors clustered where the code was *locally* correct
 and *systemically* wrong, and where a measurement was trusted without checking

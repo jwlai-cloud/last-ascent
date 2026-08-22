@@ -99,25 +99,65 @@ async function fresh(seed = 1) {
   return state();
 }
 
+/*
+ * STEERING, shared by every policy in this file.
+ *
+ * It used to look exactly one level ahead, and that made it a far weaker
+ * player than a person — a lane that is clear now but blocked above is a trap
+ * a one-level bot walks into every single time. That weakness was not
+ * harmless: it read as difficulty, and a real density reduction was made to
+ * buy back summits the bot was losing to its own blindness. At the same
+ * setting, one-level scored 0 summits and 75 average levels where lookahead
+ * scored 2 and 159.
+ *
+ * A measuring instrument weaker than the player measures the instrument. Four
+ * levels is roughly what fits on the portrait screen, so it is roughly what a
+ * person is working from.
+ */
+const LOOKAHEAD = 4;
+const BEST_LANE = `const bestLane = (a, s, forced) => {
+  const up = Math.ceil(s.floor + 0.001);         // the level he will land on
+  let best = null, bestScore = -Infinity;
+  for (const l of [0, 1, 2]) {
+    const here = a.cellAt(l, up);
+    if (here === 'gap' || here === 'hazard') continue;   // never aim at a hit
+    if (forced !== undefined && l !== forced) continue;
+    let score = 0;
+    for (let d = 0; d < ${LOOKAHEAD}; d++) {
+      const c = a.cellAt(l, up + d);
+      const w = Math.pow(0.6, d);                // the near future matters most
+      if (c === 'gap' || c === 'hazard') score -= 10 * w;
+      else if (c === 'cache') score += 6 * w;
+      else if (c === 'energy') score += 3 * w;
+    }
+    score -= Math.abs(l - s.lane) * 0.5;         // crossing lanes is not free
+    if (score > bestScore) { bestScore = score; best = l; }
+  }
+  return best;
+};`;
+
 /* Climb by jumping, steering to a safe lane first. Several tests need to
  * *arrive* somewhere; without this they stand still and get caught. */
-const CLIMB_TO = `const climbTo = (target, opts = {}) => {
+const CLIMB_TO = BEST_LANE + `
+const climbTo = (target, opts = {}) => {
   const a = window.ascent;
   let n = 0;
   while (a.getState().floorInt < target && a.getState().running && n < 40000) {
     const s = a.getState();
     const up = Math.ceil(s.floor + 0.001);       // the level he will land on
     const safe = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, up)));
-    const want = opts.lane !== undefined && safe.includes(opts.lane) ? opts.lane
-      : (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane));
+    const want = bestLane(a, s, opts.lane) ?? (opts.lane !== undefined && safe.includes(opts.lane) ? opts.lane
+      : (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane)));
     /* Jump the instant you land, and pick the landing lane in the air.
      * Steering only while grounded burns the beat and is strictly worse. */
     if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
     if (s.grounded) a.jump();
-    // A real climber spends to survive. One spend now, so the policy is
-    // simply: shield when the next hit would end the run and you can pay.
+    /* A real climber spends to survive. These were an if/else chain, which
+     * meant a test pinning energy with keepEnergy never shielded at all — it
+     * survived anyway while the tower was gentle and started dying the moment
+     * it was not, which reads as a difficulty problem and is a helper bug. */
     if (opts.keepEnergy !== undefined) a.setEnergy(opts.keepEnergy);
-    else if (s.health <= 1 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
+    if (s.health <= 2 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
     a.step(0.05); n++;
   }
 };`;
@@ -658,7 +698,8 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
 /* Careful play must beat careless. Spikes costing only a level once made
  * mistakes so cheap that a climber who never changed lane beat one who dodged. */
 {
-  const curve = await run(() => {
+  const curve = await run(`(() => {
+    ${BEST_LANE}
     const a = window.ascent;
     const play = (seed, mode) => {
       a.start(seed); a.pause(true); a.mute(true);
@@ -669,9 +710,8 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
         const s = a.getState();
         const up = Math.ceil(s.floor + 0.001);
         const safe = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, up)));
-        const rich = safe.filter(l => ['energy', 'cache'].includes(a.cellAt(l, up)));
         const want = mode === 'blind' ? s.lane
-          : (rich[0] ?? (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane)));
+          : (bestLane(a, s) ?? (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane)));
         // Steer in the air; never spend a grounded frame on a lane change.
         if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
         if (s.grounded) a.jump();
@@ -693,7 +733,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
       };
     };
     return { careful: tally('careful'), blind: tally('blind'), seeds: seeds.length };
-  });
+  })()`);
   /* Two in five, not three. The tower is deliberately punishing now, and this
    * scripted policy is a weaker player than a person — a human summited 300
    * on a build where the policy could not pass 159. It is a floor against the
@@ -855,6 +895,66 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     check(`arriving by ${arrival} on spikes costs a life`, h.lostLife === 1,
       `lost ${h.lostLife}`);
   }
+}
+
+/*
+ * WHAT HE OWNS vs WHAT HE WEARS.
+ *
+ * Every upgrade was invisible. The shield had a bubble and the five split
+ * perks had nothing, and AIR SAVE was the worst case because it is the only
+ * one whose state changes mid-fall — the moment you need to know whether you
+ * still have it is the moment you are falling. These assert the marker exists,
+ * that it tracks the perk, and that spending AIR SAVE greys the cap.
+ */
+{
+  await fresh();
+  await run(() => { window.ascent.pause(true); window.ascent.mute(true); });
+
+  const bare = (await state()).worn;
+  check('an unequipped climber wears nothing',
+    bare.cap === null && !bare.magnet && !bare.spring && !bare.grip && bare.spare === 0,
+    JSON.stringify(bare));
+
+  const worn = await run(() => {
+    const a = window.ascent;
+    for (const [id, n] of [['airSave',1],['magnet',1],['spring',3],['grip',2],['spareShield',2]]) a.grant(id, n);
+    a.step(0.02);
+    return a.getState().worn;
+  });
+  check('every upgrade shows on the climber',
+    worn.cap === 'ready' && worn.magnet && worn.spring && worn.grip && worn.spare === 2,
+    JSON.stringify(worn));
+
+  /* The one that matters. Step off a gap, spend the air save, and the cap has
+   * to go grey while still in the air — not on the next landing. */
+  const air = await run(() => {
+    const a = window.ascent;
+    const s0 = a.getState();
+    for (const l of [0, 1, 2]) a.setCell(l, s0.floorInt + 1, 'gap');
+    a.jump();
+    for (let i = 0; i < 300 && a.getState().grounded; i++) a.step(0.02);
+    for (let i = 0; i < 300 && a.getState().airborne > 0; i++) a.step(0.02);
+    const falling = a.getState();               // off the ledge, no air save spent yet
+    a.jump();                                   // this is the air save
+    a.step(0.02);
+    const spent = a.getState();
+    return { readyWhileFalling: falling.worn.cap, afterSpending: spent.worn.cap, used: spent.usedAirSave };
+  });
+  check('the cap reads ready while falling and greys the moment it is spent',
+    air.readyWhileFalling === 'ready' && air.afterSpending === 'spent' && air.used,
+    JSON.stringify(air));
+
+  /* A perk removed must remove its marker, or the climber lies about what he
+   * has — the same class of bug as a collected fragment left in the scene. */
+  const cleared = await run(() => {
+    const a = window.ascent;
+    for (const id of ['airSave','magnet','spring','grip','spareShield']) a.grant(id, 0);
+    a.step(0.02);
+    return a.getState().worn;
+  });
+  check('removing an upgrade removes what it wore',
+    cleared.cap === null && !cleared.magnet && !cleared.spring && !cleared.grip && cleared.spare === 0,
+    JSON.stringify(cleared));
 }
 
 /*

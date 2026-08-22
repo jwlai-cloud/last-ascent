@@ -118,9 +118,13 @@ const tapped = await page.evaluate(() => window.ascent.getState());
 check('a spend button responds to a real tap', tapped.shield === true && tapped.spent >= tapped.cost.shield,
   `shield ${tapped.shield}, spent ${tapped.spent}`);
 
-/* The game is hard on purpose — a careful climber summits about three runs in
- * five — so pinning one seed asserts luck. Try a few and require that the
- * summit is reachable at all in the packaged build. */
+/* The game is hard on purpose, so pinning one seed asserts luck. Try a few and
+ * require that the summit is reachable at all in the packaged build.
+ *
+ * The steering has to match the suite's. This file kept its own copy that
+ * looked one level ahead, and a lane clear now but blocked above traps that
+ * every time — so the packaged build failed a check the source build passed,
+ * which reads as a packaging fault and is really two policies drifting apart. */
 const won = await page.evaluate(() => {
   const a = window.ascent;
   const play = seed => {
@@ -130,8 +134,22 @@ const won = await page.evaluate(() => {
       const s = a.getState();
       const up = Math.ceil(s.floor + 0.001);
       const safe = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, up)));
-      const rich = safe.filter(l => ['energy', 'cache'].includes(a.cellAt(l, up)));
-      const want = rich[0] ?? (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane));
+      let pick = null, bestScore = -Infinity;
+      for (const l of [0, 1, 2]) {
+        const here = a.cellAt(l, up);
+        if (here === 'gap' || here === 'hazard') continue;
+        let score = 0;
+        for (let d = 0; d < 4; d++) {                 // four levels: what fits on screen
+          const c = a.cellAt(l, up + d);
+          const w = Math.pow(0.6, d);
+          if (c === 'gap' || c === 'hazard') score -= 10 * w;
+          else if (c === 'cache') score += 6 * w;
+          else if (c === 'energy') score += 3 * w;
+        }
+        score -= Math.abs(l - s.lane) * 0.5;
+        if (score > bestScore) { bestScore = score; pick = l; }
+      }
+      const want = pick ?? (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane));
       if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
       if (s.grounded) a.jump();
       if (s.health <= 2 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');

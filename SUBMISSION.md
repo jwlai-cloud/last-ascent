@@ -13,7 +13,7 @@ npm run test:package   # packaging, then the suite against the packaged build,
                        # then the guidance's own six-step procedure on the zip
 ```
 
-Current: **7/7 packaging · 80/80 smoke · 9/9 zip.**
+Current: **7/7 packaging · 84/84 smoke · 9/9 zip.**
 
 `npm run test:smoke` alone is not sufficient — it tests `src/`, and the
 submitted `index.html` is a different file.
@@ -62,9 +62,11 @@ The dials, in the order worth reaching for:
 | Dial | Now | Effect |
 |---|---|---|
 | `cost.shield` | 18 | **Reach for this first.** With one spend left, the price *is* the hit budget: a climb absorbs ~9 hits, so 20 gave the bot 0 summits and 10 gave it 7 |
-| `dangerCeiling` | 1.35 | Hazard density at the summit; does not touch the opening. Trades directly against `cost.shield` |
+| `dangerFull` | 80 | The level danger stops rising at. **This is what makes the opening bite** — it used to be the summit, so level 200 sat at only 1.23 of 1.7 |
+| `dangerCeiling` | 1.2 | Density from `dangerFull` upward — a plateau, not a slope. Trades directly against `cost.shield` |
 | `dangerFloor` | 0.30 | Hazard density at level zero |
 | `routes.DANGER.hazard` | 0.28 | The base rate |
+| — | — | **Sealed floors measure 0% up to a 2.4 ceiling**, so density is hard rather than unfair. Check that before pushing it |
 | `scrollStart` / `scrollMax` | 1.3 / 1.7 | The line. **`scrollMax` does not move the bot at all** — a policy that jumps every grounded frame is never caught by it, so every scripted death is a spike or a gap. Tune it against a person, not against the suite |
 
 ## Still open

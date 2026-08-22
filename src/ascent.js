@@ -442,21 +442,37 @@
      */
     dangerFloor: .30,        // multiplier on hazards and gaps at level zero
     /*
+     * The level danger stops rising at. It used to be the summit, so density
+     * climbed across all 300 levels and the first two hundred were reported —
+     * accurately — as easy: at level 200 the multiplier was only 1.23 of an
+     * eventual 1.7, and half the climb sat below what level 150 felt like.
+     * Reaching full danger early means the back half is a plateau you have to
+     * survive rather than a slope you outgrow.
+     */
+    dangerFull: 80,
+    /*
      * Eased when the leap slowed to a human rhythm. The old density was tuned
      * against a bot managing a jump every 0.15s — a cadence only reachable
      * because a held key auto-repeated. At half that climb speed the same
      * density took a careful climber from seven summits in ten to one.
      */
     /*
-     * 1.35, down from 1.7, and the reason is the spend cut rather than mercy.
-     * SURGE was the scripted climber's constant crutch — it bought back the
-     * storm gap every time the line closed — and deleting it removed far more
-     * survivability than deleting a button should suggest. At 1.7 with the
-     * dearer shield the summit went unreached on all ten seeds. Density and
-     * shield price now trade against each other honestly: fewer hits to take,
-     * each one dearer to prevent.
+     * 1.7, and it was briefly cut to 1.35 for a bad reason worth recording.
+     * Deleting SURGE removed the scripted climber's constant crutch, the ten
+     * seed regression fell to zero summits, and the density was reduced to buy
+     * them back. But that bot looked exactly one level ahead, so a lane clear
+     * now and blocked above trapped it every time — at this very setting it
+     * scored 0 summits and 75 average levels where a four level lookahead
+     * scored 2 and 159. The tower was never too dense; the measurement was too
+     * blind, and a real design change was made to satisfy it.
+     *
+     * The suite reads four levels ahead now, roughly what fits on the portrait
+     * screen and roughly what a person works from, so 1.7 stands. Sealed
+     * floors — all three lanes blocked, where survival is luck rather than
+     * skill — measure 0% at every density tested up to 2.4, so this can go
+     * higher on evidence if play says it should.
      */
-    dangerCeiling: 1.35,     // and at the summit — the top is still 4.5x the base
+    dangerCeiling: 1.2,      // and from dangerFull upward — a plateau, not a slope
   };
 
   const colors = {
@@ -464,6 +480,9 @@
     climber: 0xffd9a0, suit: 0x3f7fd6, pack: 0x2b3350,
     energy: 0x66e0c8, hazard: 0xe0556b, splitPlate: 0x4a5a8f, cache: 0xffc23d, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0x5f7fc4, city: 0x0d1424,
     safe: 0x63c47a, danger: 0xe0556b, unknown: 0xc79bf0, beacon: 0xffe066,
+    // Worn upgrades. Each one distinct, because their whole job is to be told apart.
+    kitAir: 0x8fd8ff, kitMagnet: 0xc79bf0, kitSpring: 0x63c47a, kitGrip: 0xffb454,
+    kitSpent: 0x4c5470,
   };
 
   const ui = Object.fromEntries([
@@ -551,7 +570,7 @@
     if (kind === 'dead') { noise({ dur: .7, gain: .3, freq: 300 }); tone({ freq: 160, to: 40, dur: .8, type: 'sawtooth', gain: .18 }); }
   }
 
-  let renderer, scene, camera, world, climberMesh, climberLimbs, shieldMesh, stormMesh, lightning;
+  let renderer, scene, camera, world, climberMesh, climberLimbs, kit, shieldMesh, stormMesh, lightning;
   let keyLight, stormLight, orbit = 0, orbitTarget = 0, clock = 0, last = 0;
   let shake = 0, flash = 0, lightningTimer = 1;
   let game = null;
@@ -700,6 +719,55 @@
     };
     // A pack, so the silhouette is asymmetric and reads as facing away from you.
     mesh(new T.BoxGeometry(.26, .3, .14), mat(colors.pack, .6), climberMesh, 0, .22, -.2);
+
+    /*
+     * WORN UPGRADES.
+     *
+     * Every perk was invisible. A shield had a bubble, so the player could see
+     * it; the five upgrades taken at splits changed nothing you could look at,
+     * and AIR SAVE was the worst of them — it is the only one whose state
+     * changes DURING a fall, and the moment you need to know whether you still
+     * have it is the moment you are falling. "There is no notification like a
+     * shield" was the report, and it was exactly right.
+     *
+     * So each perk is a thing the climber wears, on a different part of the
+     * silhouette so they read at a glance and stack without merging: a flight
+     * cap, a halo, boots, gloves, pack pips. This is not decoration — it is
+     * the only channel these mechanics have. Clarity is the one visual bar the
+     * guidance sets, and an invisible mechanic fails it.
+     */
+    const kitMat = (hex) => {
+      const m = mat(hex, .4);
+      m.emissive = new T.Color(hex);
+      m.emissiveIntensity = .55;
+      return m;
+    };
+    kit = {
+      /* AIR SAVE — a flight cap. Lit means the extra press is still in hand;
+       * it goes dead grey the instant it is spent and comes back on landing,
+       * so the answer to "can I save this fall" is on screen during the fall. */
+      /* Sits ON the skull, not in it. The head is a sphere of r=.2 centred at
+       * .52, so its crown is at .72 — a cap centred lower than that buries its
+       * own base and shows a sliver. */
+      cap: mesh(new T.ConeGeometry(.23, .28, 4), kitMat(colors.kitAir), climberMesh, 0, .86, 0),
+      // MAGNET — a halo, because its effect happens in the air around him.
+      halo: mesh(new T.TorusGeometry(.3, .04, 6, 14), kitMat(colors.kitMagnet), climberMesh, 0, 1.06, 0),
+      // SPRING — boots. It changes how he leaves the ground, so it is on his feet.
+      bootL: mesh(new T.BoxGeometry(.17, .1, .19), kitMat(colors.kitSpring), climberMesh, -.11, -.34, .01),
+      bootR: mesh(new T.BoxGeometry(.17, .1, .19), kitMat(colors.kitSpring), climberMesh, .11, -.34, .01),
+      // GRIP — gloves. It changes what happens when he takes a hit, so: hands.
+      gloveL: mesh(new T.BoxGeometry(.14, .13, .14), kitMat(colors.kitGrip), climberMesh, -.24, .16, .04),
+      gloveR: mesh(new T.BoxGeometry(.14, .13, .14), kitMat(colors.kitGrip), climberMesh, .24, .16, .04),
+      /* SPARE SHIELD — pips on the SHOULDERS, one per stack. They were on the
+       * back of the pack, where the camera never sees them: a marker behind
+       * the model is the same as no marker. */
+      spare: [0, 1].map(i => mesh(new T.SphereGeometry(.075, 8, 6), kitMat(colors.energy),
+        climberMesh, i ? .21 : -.21, .42, .06)),
+    };
+    kit.halo.rotation.x = Math.PI / 2;
+    for (const m of [kit.cap, kit.halo, kit.bootL, kit.bootR, kit.gloveL, kit.gloveR, ...kit.spare]) {
+      m.visible = false;
+    }
 
     /* A bought shield was only visible as a highlight on the button that bought
      * it, which is the wrong place — the player is looking at the climber. */
@@ -895,8 +963,12 @@
     for (let f = fromFloor; f < fromFloor + span; f++) {
       for (let lane = 0; lane < config.lanes; lane++) {
         const route = config.routes[routeByLane[lane]];
+        /* Danger reaches full at `dangerFull`, not at the summit. Ramping
+         * across all 300 levels meant the back half of the climb was the only
+         * part that bit, and the first two thirds read as easy — the tower has
+         * to be dangerous while the player still has lives to lose. */
         const ramp = config.dangerFloor +
-          (config.dangerCeiling - config.dangerFloor) * Math.min(1, f / config.summit);
+          (config.dangerCeiling - config.dangerFloor) * Math.min(1, f / config.dangerFull);
         const roll = game.rand();
         let kind = null;
 
@@ -1451,6 +1523,51 @@
     return true;
   }
 
+  /*
+   * Drive the worn upgrades from state. One function, so a new perk is one
+   * line here rather than a new system, and so there is exactly one place
+   * where "what he is wearing" can disagree with "what he has".
+   */
+  function syncKit() {
+    if (!kit || !game) return;
+    /* Driven off game.elapsed rather than the render clock, because it is
+     * called from tick() as well: a paused test advancing by step() must see
+     * the same worn state a player would, or the seam tests nothing. */
+    const clock = game.elapsed;
+    const u = game.upgrades, on = climberMesh.visible;
+    const wear = (m, show, hex) => {
+      m.visible = show && on;
+      if (!m.visible) return;
+      m.material.color.setHex(hex);
+      m.material.emissive.setHex(hex);
+    };
+
+    /* The one that changes mid-fall, and the only reason this exists. Grey the
+     * instant it is spent, lit again on landing. */
+    wear(kit.cap, u.airSave > 0, game.usedAirSave ? colors.kitSpent : colors.kitAir);
+    if (kit.cap.visible && !game.usedAirSave) {
+      kit.cap.material.emissiveIntensity = .5 + Math.sin(clock * 5) * .18;   // a ready thing pulses
+    } else {
+      kit.cap.material.emissiveIntensity = .12;
+    }
+
+    wear(kit.halo, u.magnet > 0, colors.kitMagnet);
+    if (kit.halo.visible) kit.halo.rotation.z = clock * 1.6;
+
+    /* Stacking perks brighten rather than multiply, so three stacks read as
+     * "more of the same thing" instead of as three different pickups. */
+    const glow = n => .3 + .25 * n;
+    for (const m of [kit.bootL, kit.bootR]) {
+      wear(m, u.spring > 0, colors.kitSpring);
+      if (m.visible) m.material.emissiveIntensity = glow(u.spring);
+    }
+    for (const m of [kit.gloveL, kit.gloveR]) {
+      wear(m, u.grip > 0, colors.kitGrip);
+      if (m.visible) m.material.emissiveIntensity = glow(u.grip);
+    }
+    kit.spare.forEach((m, i) => wear(m, u.spareShield > i, colors.energy));
+  }
+
   // ── ending ─────────────────────────────────────────────────────────────────
 
   function summit() {
@@ -1584,6 +1701,12 @@
       // the pulse tightens as it arrives, so urgency is felt not read
       ui.turnWarn.style.animationDuration = `${Math.max(.12, game.flipTimer / 5)}s`;
     }
+
+    /* Here rather than in render(), so what the climber wears is updated by
+     * the same call that updates the HUD — including under a paused test
+     * stepping the simulation by hand, and including a spend, which changes
+     * state without a frame going by. */
+    syncKit();
   }
 
   /*
@@ -1882,6 +2005,15 @@
       cache: game?.cache, caches: game?.caches,
       flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps, turns: game?.turns,
       upgrades: game && { ...game.upgrades }, usedAirSave: game?.usedAirSave,
+      /* What the climber is visibly WEARING, as opposed to what he owns. The
+       * two drifting apart is the bug this exists to catch. */
+      worn: kit && {
+        cap: kit.cap.visible ? (game?.usedAirSave ? 'spent' : 'ready') : null,
+        magnet: kit.halo.visible,
+        spring: kit.bootL.visible,
+        grip: kit.gloveL.visible,
+        spare: kit.spare.filter(m => m.visible).length,
+      },
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
       routes: game && routesAt(game.floor), routesAhead: game && routesAt(game.floor + config.splitEvery),
