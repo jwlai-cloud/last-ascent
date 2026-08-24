@@ -1035,6 +1035,25 @@
           // Caches only appear where the danger already is.
           kind = route.hazard > .2 && game.rand() < config.cacheChance ? 'cache' : 'energy';
         }
+        /*
+         * THE OPENING IS CLEAN BY CONSTRUCTION, not cleaned up afterwards.
+         *
+         * It used to be fixed by deleting cells in reset() after the section
+         * had already been generated AND drawn — and drawCell() appends a new
+         * group rather than replacing one, so a deletion after drawing cannot
+         * take the mesh with it. Doing it here means the wrong cell never
+         * exists, and there is nothing to un-draw.
+         */
+        if (f <= config.openingSafe && (kind === 'gap' || kind === 'hazard')) kind = null;
+        /*
+         * And level zero carries nothing to collect. The climber STARTS
+         * standing on level zero, so a fragment in a neighbouring lane there
+         * can only be had by sidestepping before the very first jump — while
+         * the game is telling him to jump — and once he jumps he can never
+         * come back down. Drawing a pickup that cannot be taken teaches the
+         * player, in the first two seconds, that pickups are unreliable.
+         */
+        if (f === 0 && (kind === 'energy' || kind === 'cache')) kind = null;
         if (kind) game.cells.set(`${lane}:${f}`, kind);
       }
       // A floor with no way through is a dead end, not difficulty. Always clear one.
@@ -1215,24 +1234,10 @@
       taughtJump: false, taughtSwipe: false,
     };
 
+    /* The clean opening and the empty level zero are enforced inside
+     * generateSection now, so the grid is right the first time and the scene
+     * drawn from it is right too. Nothing to delete here. */
     ensureGenerated();
-    /*
-     * A clean opening. Generation could put a gap under the starting lane, so
-     * a run began by falling before the player had touched anything, and it
-     * could put spikes directly above, so the very first jump was punished.
-     * The first couple of levels are plain floor in every lane.
-     */
-    for (let f = 0; f <= config.openingSafe; f++) {
-      for (let l = 0; l < config.lanes; l++) {
-        // Only clear what can HURT. Wiping the cell entirely also deleted the
-        // energy, so the first three levels had nothing to pick up and the
-        // collecting mechanic looked broken for the whole opening.
-        const k = game.cells.get(`${l}:${f}`);
-        if (k === 'hazard' || k === 'gap') game.cells.delete(`${l}:${f}`);
-      }
-    }
-    // ...but he still needs solid ground directly underfoot.
-    game.cells.delete(`${game.lane}:0`);
     buildSummitFigure();
     sync();
   }
@@ -1588,42 +1593,65 @@
    */
   function syncKit() {
     if (!kit || !game) return;
+    /*
+     * When a perk is taken the feed names it and a new thing appears on the
+     * climber, but nothing connects the two — "what is the hat triangle for?"
+     * is what that costs. Popping the marker as it is granted puts the word
+     * and the object on screen together, which is the only moment the player
+     * can learn the mapping.
+     */
+    game.kitSeen ||= {};
+    game.kitPop ||= {};
+    for (const id of ['airSave', 'magnet', 'spring', 'grip', 'spareShield']) {
+      if (game.kitSeen[id] !== game.upgrades[id]) {
+        if (game.kitSeen[id] !== undefined && game.upgrades[id] > (game.kitSeen[id] || 0)) {
+          game.kitPop[id] = game.elapsed;
+        }
+        game.kitSeen[id] = game.upgrades[id];
+      }
+    }
     /* Driven off game.elapsed rather than the render clock, because it is
      * called from tick() as well: a paused test advancing by step() must see
      * the same worn state a player would, or the seam tests nothing. */
     const clock = game.elapsed;
     const u = game.upgrades, on = climberMesh.visible;
-    const wear = (m, show, hex) => {
+    /* A short, big pop — it has to be noticed against a moving screen. */
+    const popOf = id => {
+      const t = game.elapsed - (game.kitPop[id] ?? -99);
+      return t >= 0 && t < 1.2 ? 1 + (1 - t / 1.2) * .8 : 1;
+    };
+    const wear = (m, show, hex, id) => {
       m.visible = show && on;
       if (!m.visible) return;
       m.material.color.setHex(hex);
       m.material.emissive.setHex(hex);
+      if (id) m.scale.setScalar(popOf(id));
     };
 
     /* The one that changes mid-fall, and the only reason this exists. Grey the
      * instant it is spent, lit again on landing. */
-    wear(kit.cap, u.airSave > 0, game.usedAirSave ? colors.kitSpent : colors.kitAir);
+    wear(kit.cap, u.airSave > 0, game.usedAirSave ? colors.kitSpent : colors.kitAir, 'airSave');
     if (kit.cap.visible && !game.usedAirSave) {
       kit.cap.material.emissiveIntensity = .5 + Math.sin(clock * 5) * .18;   // a ready thing pulses
     } else {
       kit.cap.material.emissiveIntensity = .12;
     }
 
-    wear(kit.halo, u.magnet > 0, colors.kitMagnet);
+    wear(kit.halo, u.magnet > 0, colors.kitMagnet, 'magnet');
     if (kit.halo.visible) kit.halo.rotation.z = clock * 1.6;
 
     /* Stacking perks brighten rather than multiply, so three stacks read as
      * "more of the same thing" instead of as three different pickups. */
     const glow = n => .3 + .25 * n;
     for (const m of [kit.bootL, kit.bootR]) {
-      wear(m, u.spring > 0, colors.kitSpring);
+      wear(m, u.spring > 0, colors.kitSpring, 'spring');
       if (m.visible) m.material.emissiveIntensity = glow(u.spring);
     }
     for (const m of [kit.gloveL, kit.gloveR]) {
-      wear(m, u.grip > 0, colors.kitGrip);
+      wear(m, u.grip > 0, colors.kitGrip, 'grip');
       if (m.visible) m.material.emissiveIntensity = glow(u.grip);
     }
-    kit.spare.forEach((m, i) => wear(m, u.spareShield > i, colors.energy));
+    kit.spare.forEach((m, i) => wear(m, u.spareShield > i, colors.energy, 'spareShield'));
 
     /* The ring mirrors hint()'s own ranking rather than re-deciding urgency.
      * Colour says what kind of trouble, pulse rate says how urgent, and a turn

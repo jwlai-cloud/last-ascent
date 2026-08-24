@@ -13,7 +13,7 @@ npm run test:package   # packaging, then the suite against the packaged build,
                        # then the guidance's own six-step procedure on the zip
 ```
 
-Current: **7/7 packaging · 94/94 smoke · 9/9 zip.**
+Current: **7/7 packaging · 97/97 smoke · 9/9 zip.**
 
 `npm run test:smoke` alone is not sufficient — it tests `src/`, and the
 submitted `index.html` is a different file.

@@ -797,6 +797,27 @@ const climbTo = (target, opts = {}) => {
     `${opening.hazards} hazards or gaps found in levels 0-2 across 12 seeds`);
   check('but there is still something to collect there', opening.energy > 0,
     `${opening.energy} pickups across 12 seeds`);
+
+  /* Level zero specifically carries NOTHING to collect. The climber starts
+   * standing on it, so a fragment in a neighbouring lane there can only be had
+   * by sidestepping before the first jump, and once he jumps he can never come
+   * back down. A pickup drawn and unreachable in the first two seconds teaches
+   * the player that pickups are unreliable. */
+  {
+    const zero = await run(() => {
+      const a = window.ascent, found = [];
+      for (const seed of [1, 7, 13, 21, 33, 41, 55, 68, 79, 84, 91, 99]) {
+        a.start(seed); a.pause(true); a.mute(true);
+        for (const l of [0, 1, 2]) {
+          const c = a.cellAt(l, 0);
+          if (c === 'energy' || c === 'cache') found.push(`seed ${seed} lane ${l}`);
+        }
+      }
+      return found;
+    });
+    check('level zero offers nothing you cannot reach', zero.length === 0,
+      zero.length ? zero.join(', ') : 'no pickups at level 0 across 12 seeds');
+  }
 }
 
 /*
@@ -830,6 +851,15 @@ const climbTo = (target, opts = {}) => {
     /shield/i.test(copy.text) && /\bS\b/.test(copy.text), copy.text.match(/[^.]*SHIELD[^.]*/i)?.[0] ?? 'no mention');
   check('the tutorial does not still promise the deleted spends',
     !/surge|grapple/i.test(copy.text));
+  /* The markers went unexplained until a player asked what the triangle on the
+   * head was for. Learning it from outside the game is the same as not
+   * learning it, so the tutorial has to name both channels. */
+  check('the tutorial explains what the climber is wearing',
+    /cone|cap/i.test(copy.text) && /halo|boots|gloves|pips/i.test(copy.text),
+    copy.text.match(/[^.]*wears[^.]*/i)?.[0] ?? 'no mention of worn perks');
+  check('the tutorial explains the ring at his feet',
+    /ring/i.test(copy.text) && /red/i.test(copy.text) && /turn/i.test(copy.text),
+    copy.text.match(/[^.]*ring[^.]*/i)?.[0] ?? 'no mention of the ring');
 }
 
 /*

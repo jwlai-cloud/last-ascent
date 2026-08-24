@@ -377,7 +377,42 @@ suite asks the simulation what happened rather than whether it could be seen**
 — which is exactly why 94 checks passed over a game that was invisible for
 four fifths of a run.
 
-## Session 16 — submission artifacts
+## Session 16 — the markers nobody could read, and an unreachable opening
+
+*"What is the hat triangle for, and foot circle?"*
+
+Both had been built two sessions earlier and both were explained to the player
+**in chat**, which is worth nothing to a judge opening the zip. The game itself
+said nothing about either. Learning a mechanic from outside the game is the
+same as not learning it.
+
+The tutorial now names both channels — what the climber wears and what the ring
+at his feet means — and two guards assert it keeps naming them, because every
+other piece of tutorial text on this project has gone stale at least once.
+
+Better than text: **the marker pops as the perk is granted.** The feed already
+shouted the name and a new object already appeared on the climber, but nothing
+tied the two together. The pop puts the word and the object on screen in the
+same moment, which is the only moment the mapping can be learned.
+
+*"If you cannot collect diamond in the first few levels, then no need to show
+any there."*
+
+Correct, and the reason is structural. The climber **starts standing on level
+zero**, so a fragment in a neighbouring lane there can only be had by
+sidestepping before the very first jump — while the game is telling him to
+jump — and once he jumps he can never come back down. Measured: the seeds that
+lost energy in the opening were exactly the seeds that generated it at level
+zero.
+
+The fix moved into the generator rather than being cleaned up afterwards, and
+that mattered. The clean-opening rule used to delete cells in `reset()` **after
+the section had already been generated and drawn**, and `drawCell()` appends a
+new group rather than replacing one — so a deletion after drawing cannot take
+the mesh with it. Enforcing it at generation means the wrong cell never exists
+and there is nothing to un-draw.
+
+## Session 17 — submission artifacts
 
 Packaging and zip verification were ported from `../beanstalk` where they were
 already proven. `npm run test:package` runs the guidance's own six-step
