@@ -24,6 +24,20 @@ SRC = ROOT / 'submission' / 'design-intent.txt'
 OUT = ROOT / 'submission' / 'last-ascent-design-intent.docx'
 LIMIT = 500
 
+# The template is explicit: "Use the sections below exactly as given. Do not
+# rename, reorder, merge or add sections." So it is checked rather than
+# trusted — a renamed heading is the kind of thing nobody notices until a judge
+# does. Source: docs/source/design-intent-template.md.
+REQUIRED_SECTIONS = [
+    '1. Game title and genre',
+    '2. Target player and pitch',
+    '3. How to play (controls)',
+    '4. Core loop',
+    '5. What is in this prototype',
+    '6. Progression and signature twist',
+    '7. Future-state vision',
+]
+
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -58,6 +72,18 @@ def main():
     words = len(text.split())
     if words > LIMIT:
         sys.exit(f'design-intent.txt is {words} words, over the {LIMIT} limit')
+
+    headings = [ln.strip() for ln in text.splitlines()
+                if re.match(r'^\d\.\s', ln.strip())]
+    if headings != REQUIRED_SECTIONS:
+        sys.exit('design-intent.txt sections do not match the official template.\n'
+                 f'  found:    {headings}\n'
+                 f'  required: {REQUIRED_SECTIONS}')
+
+    # Text only: no images, screenshots, diagrams, charts or tables.
+    if any(ch in text for ch in ('|', '![')):
+        sys.exit('design-intent.txt looks like it contains a table or image; the '
+                 'template requires text only')
 
     body = ''.join(para(line.strip()) for line in text.splitlines())
     document = (

@@ -40,7 +40,7 @@ npm run test:package   # packaging, the suite against the zip, then the zip itse
 Nothing carries the climber upward. He stands on a ledge, the tower falls away,
 and every level is a jump the player asked for. The sight line is what used to
 be the storm: one rising number, now the bottom of the frame, and the only
-clock. `BUILD_LOG.md` PART 1 is the authoritative list of locked decisions.
+clock. `buildlog.md` PART 1 is the authoritative list of locked decisions.
 
 All three submission deliverables are written and current — the zip, a
 463-word design-intent `.docx` on the official seven-section template, and the

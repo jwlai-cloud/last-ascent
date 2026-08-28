@@ -9,3 +9,7 @@ last-ascent.zip
 
 # screenshots the suite and probes rewrite on every run
 tests/*.png
+
+# Scraped copies of the official docs live in docs/source/ as committed text.
+# The raw PDFs and scrape cache do not need to ship.
+.firecrawl/

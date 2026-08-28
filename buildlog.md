@@ -1,12 +1,14 @@
-# The Last Ascent — build log
+# Build Log: The Last Ascent — Genre: Survival & Resource Management
 
 Kept during the build, per the format in *Creating and Maintaining a Build Log*:
 a running list of locked decisions, then an entry per session.
 
-**AI tooling:** Claude Code (Anthropic), model Claude Opus 5, driven
-conversationally from a terminal. No other code generator, and no third-party
-game template. Every source file here was written by the model in response to
-prompts; the human directed, playtested, rejected and approved.
+**Tool(s), all sessions:** Claude Code (Anthropic), model Claude Opus 5,
+driven conversationally from a terminal. No other code generator, no
+second AI, and no third-party game template. Every source file here was
+written by the model in response to prompts; the human directed, playtested,
+rejected and approved. Where a single session used a different tool it is
+named in that session's entry.
 
 **Verification tooling:** Playwright driving real Chromium at 430 × 860, plus
 scripted playthroughs that drive the simulation directly and report the curve.
@@ -18,6 +20,17 @@ Commit SHAs are in `git log`, and the messages carry the reasoning in full.
 # PART 1 — Decisions locked so far
 
 Re-read at the start of each session. Mirrored in `CLAUDE.md`.
+
+## Genre floor — Survival & Resource Management
+
+The guidance is explicit that a judge who cannot find the genre in your game
+scores you badly in that lane. All three required elements, and where they are:
+
+| Required element | Where it is |
+|---|---|
+| Gathering or collecting resources | Energy fragments and supply caches, collected by landing on or stepping into them |
+| Converting them into something more useful through crafting, refining or upgrading | Energy → SHIELD (18), on the S key and a full-width button. The guidance's own core version asks for "a simple craft, refinement, or upgrade" — singular — so one reachable conversion clears the floor |
+| A threat that escalates and that the player manages against | The storm line accelerates 1.3 → 1.7 levels/s and never stops; hazard density ramps from 0.30 to full by level 80 |
 
 ## Core systems
 
@@ -379,6 +392,7 @@ four fifths of a run.
 
 ## Session 16 — the markers nobody could read, and an unreachable opening
 
+
 *"What is the hat triangle for, and foot circle?"*
 
 Both had been built two sessions earlier and both were explained to the player
@@ -412,7 +426,76 @@ new group rather than replacing one — so a deletion after drawing cannot take
 the mesh with it. Enforcing it at generation means the wrong cell never exists
 and there is nothing to un-draw.
 
-## Session 17 — submission artifacts
+## Session 17 — reading the official guidance properly, and one reverted change
+
+**Tool(s):** Claude Code (Anthropic), Claude Opus 5.
+
+**What I built/changed:** no gameplay change shipped. Re-fetched all four
+official sources — the Design Guidance page and the three linked PDFs
+(*Building a Prototype with AI*, the *Design-Intent Document* template, the
+*Build Log* guidance) — and saved verbatim extractions to `docs/source/` so the
+next session argues with the text rather than with memory.
+
+**Key decisions, and why:**
+
+- **Renamed `BUILD_LOG.md` → `buildlog.md`.** The Build Log guidance specifies
+  the filename literally: "File format: Markdown (.md), named buildlog.md."
+  We had shipped the wrong name for the whole project.
+- **Rewrote the design-intent doc against the actual template.** Section 4 is
+  named "the most important section" and must cover the primary action, the
+  goal and win/lose/reset, *the feedback that tells the player they are doing
+  well or badly*, and *why the loop is fun to repeat*. Ours covered the first
+  two. Section 6 must describe what a judge sees in **one sitting**; ours
+  described the mechanic instead. Both rewritten, 486/500 words.
+- **The generator now enforces the template**, not just the word count: exact
+  section headings in order, and a check for tables or images, since the
+  template forbids renaming, reordering, merging or adding sections. Proved by
+  renaming a heading and watching the build refuse.
+
+**What I pivoted on, and what changed my thinking:** two things, and both were
+the model being wrong.
+
+1. **`CLAUDE.md` had the Focus criterion backwards.** It said "cutting is as
+   valuable as adding", and that framing drove real decisions this project —
+   including deleting two spends. The guidance says the opposite: *"Focus
+   penalises sprawl and half-built systems, not ambition and not depth. A
+   deep, complete, well-made game is more focused, not less. So there is a
+   floor here, not a ceiling."* Corrected in `CLAUDE.md` with the quote, so it
+   cannot be re-derived wrongly.
+2. **I proposed and built an upgrade economy, then reverted it.** Reading the
+   genre floor I judged the "converting" leg too thin — one shield — and made
+   the five split upgrades cost energy, priced on the plate before the swipe.
+   Then I re-read the guidance's own core version: *"a small loop of gathering
+   one or two resources, **a simple craft, refinement, or upgrade**, and an
+   escalating threat"*. Singular. One reachable conversion clears the floor,
+   and we have one.
+
+**Biggest problem, and how I solved it:** the upgrade economy measured badly
+and I nearly shipped it anyway because it *sounded* right. Numbers across ten
+seeds:
+
+| Pricing | summits | avg level | banked | perks bought |
+|---|---:|---:|---:|---:|
+| free (shipping) | 2/10 | 123 | 88 | 5.9 |
+| flat 5 | 0/10 | 62 | 12 | 3.0 |
+| 2 +3/split +6/stack | 0/10 | 80 | 18 | 3.1 |
+| same, +50% energy income | 1/10 | 101 | 48 | 3.5 |
+
+A control run at price 1 scored 108, proving the collapse was economic rather
+than a bug. Nothing recovered the baseline without re-tuning the whole economy,
+two weeks out, with the playtest gate still undone — which is precisely the
+half-built system Focus punishes. Reverted.
+
+**What I learned:** re-read the primary source before designing against a
+requirement, not after. I built an economy to satisfy a floor the guidance says
+is already met, and only the measurement stopped it shipping.
+
+**Where things stand / next:** 7/7 packaging, 97/97 smoke, 9/9 zip. PR #3 is
+mergeable with ten commits. Next, and it has been next for several sessions:
+**five full playtest runs by a person**, then choose between this and
+`../beanstalk`, since only one entry may be submitted.
+
+## Session 18 — submission artifacts
 
 Packaging and zip verification were ported from `../beanstalk` where they were
 already proven. `npm run test:package` runs the guidance's own six-step

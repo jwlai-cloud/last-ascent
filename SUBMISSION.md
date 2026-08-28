@@ -1,6 +1,18 @@
 # Submission checklist — The Last Ascent
 
-Deadline **2026-09-08 13:00 PT**. Rules verbatim in `docs/competition-rules.md`.
+Deadline **2026-09-08 13:00 PT** (Devpost shows it as Sep 8, 4:00pm EDT — the
+same instant). Rules verbatim in `docs/competition-rules.md`; the four official
+sources are extracted verbatim into **`docs/source/`** and are the authority:
+
+| File | What it settles |
+|---|---|
+| `design-guidance.md` | What judges reward, the genre floors, the readable-visuals bar, packaging |
+| `design-intent-template.md` | The mandated 7 sections, 500 words, .docx, no identifying info |
+| `build-log-guidance.md` | Two-part format, per-session fields, **and the filename `buildlog.md`** |
+| `building-with-ai.md` | The requirements list and the six-step offline test |
+
+Re-fetched 2026-08-24. The 2026-08-19 capture was incomplete and cost real
+work, so re-read these late as well as early.
 
 **Only one entry may be submitted per person**, and a second is disqualified
 while the first stands. `../beanstalk` is the other candidate. Pick one.
@@ -18,13 +30,30 @@ Current: **7/7 packaging · 97/97 smoke · 9/9 zip.**
 `npm run test:smoke` alone is not sufficient — it tests `src/`, and the
 submitted `index.html` is a different file.
 
+## The official AI Submission Check — run 2026-08-24 on the packaged zip
+
+The guidance offers an optional five-point pre-upload check. Result against
+`last-ascent.zip`, verified by unzipping into a clean folder:
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Genre fit | **PASS** — Survival & Resource Management. Gather energy fragments and caches; convert energy → SHIELD (18, on `S`); escalating storm line plus hazard density ramping to full by level 80 |
+| 2 | Readable code | **PASS** — 2438 lines, 52 function declarations, 154 comment blocks. Longest line is 1798 chars and is the tutorial prose paragraph, not code |
+| 3 | Offline / no external links | **PASS** — zero remote URLs; no `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon` or `importScripts` |
+| 4 | File structure | **PASS** — `index.html` at the root, one relative ref `./vendor/three.min.js`, libraries in `vendor/` |
+| 5 | Single-player & portrait | **PASS** — no multiplayer, socket, WebRTC or server keywords; no orientation-change code |
+
 ## The three deliverables
 
 | # | What | Where | State |
 |---|---|---|---|
 | 1 | Playable prototype `.zip` | `last-ascent.zip`, rebuilt by `npm run package` | ✅ ~190KB of a 35MB cap |
 | 2 | Design intent, 500 words max, text-only `.docx` | `submission/last-ascent-design-intent.docx` | ✅ 463 words, official 7-section template, no identifying metadata |
-| 3 | Build log, markdown | `BUILD_LOG.md` | ✅ two-part format per the official guidance |
+| 3 | Build log, markdown | `buildlog.md` | ✅ two-part format, and **named `buildlog.md` exactly** — the guidance specifies the filename, and we shipped `BUILD_LOG.md` until 2026-08-24 |
+
+The design-intent generator enforces the template rather than trusting it: exact
+section headings in the official order, the 500-word cap, and a refusal if a
+table or image appears. Renaming a heading fails the build.
 
 Edit `submission/design-intent.txt`, then `npm run docx`. Never hand-edit the
 `.docx` — it is generated, and the generator enforces the 500-word limit and
@@ -41,6 +70,25 @@ Automatic, and it refuses to write a zip that would fail.
 - Nothing pointing at `./src/`
 - `index.html` at the top level of the zip, not inside a folder
 - Inside the 35MB cap
+
+## The official pre-submission checklist
+
+**Your game**
+
+- [x] A player can play the core loop, reach a win/lose/reset, and play again
+- [x] Progression or escalation within a single play session — density ramps to full by level 80, the storm accelerates, milestones every 30
+- [x] Single-player, portrait, never changes orientation
+- [x] The core elements of the chosen genre are clearly present *(see the AI check above)*
+- [x] A player can tell the pieces apart and read what is happening at a glance
+- [ ] **Everything works, nothing half-finished or left in as a stub** — believed true, but only a person playing can confirm it. See "Still open"
+
+**Your build**
+
+- [x] Single `.zip`, 204KB of a 35MB cap, `index.html` at the top level
+- [x] All game code in `index.html`, unminified
+- [x] Libraries in `vendor/`
+- [x] Everything referenced with relative paths, nothing outside the zip
+- [ ] **Played through with the internet off, from a local server, in a private window** — `npm run test:zip` automates all six steps and passes, but do it once by eye too
 
 ## Verify by hand before uploading
 
