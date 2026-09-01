@@ -39,8 +39,8 @@ From the official design guidance, for Survival & Resource Management:
 > through crafting, refining or upgrading; a threat that escalates and that the
 > player manages against.
 
-Here: collecting energy fragments; converting energy into shields, surges and
-heals; the storm rising from below. If a change weakens any of the three, it is
+Here: collecting energy fragments; converting energy into shields; the storm
+rising from below. If a change weakens any of the three, it is
 wrong regardless of how good it feels.
 
 ## Explicitly out of scope
@@ -74,15 +74,55 @@ load-bearing:
 | 30% | Player Engagement | The route choice, and energy being score and fuel at once |
 | 25% | Playability | Snapped lanes, grid collision, two verbs, input forgiveness |
 | 20% | Core Loop Design | Climb, collect, choose, spend, survive |
-| 15% | Focus | One resource, three spends, two verbs. Cut before adding. |
+| 15% | Focus | One tower, one resource, two verbs — **complete**, not small. See below. |
 | 10% | Originality | The score *is* the survival budget |
 
 **Visual polish is explicitly not scored.** The bar is legibility: the player
-must read lane, hazard, gap and storm distance at a glance.
+must read lane, hazard, gap and storm distance at a glance. There is **no
+ceiling** — polish beyond legibility is welcome, it just earns nothing on its
+own.
+
+### Focus means finish, NOT small — read this before proposing a cut
+
+This file previously said "cutting is as valuable as adding", and that is a
+**misreading** of the criterion that shaped several decisions on this project.
+The guidance is explicit (`docs/source/design-guidance.md`):
+
+> Focus penalises **sprawl and half-built systems**, not ambition and not
+> depth. A deep, complete, well-made game is *more* focused, not less.
+> So there is a floor here, not a ceiling. [...] a prototype that adds real
+> depth, a longer arc, or a fresh twist on top of a working core will score
+> **higher**. [...] The failure mode is not building too much. It is building
+> six things that each half-work.
+
+So the test for a new mechanic is **not** "does this add a thing" — it is
+"will this be finished, and does it deepen the core loop or sit beside it".
+A half-built system is the thing being punished. A finished one that adds
+depth is rewarded. Deleting a working mechanic to be "more focused" is a
+mistake this project has already made once.
+
+### The genre floor is a rejection risk, not a scoring nuance
+
+> Your game needs to clearly be an example of its genre. [...] if a judge
+> cannot find the resource management in your survival game, it will not
+> score well against the others in that lane.
+
+Survival & Resource Management requires **all three**:
+
+| Element | In this game |
+|---|---|
+| Gathering or collecting resources | Energy fragments and supply caches |
+| **Converting them into something more useful through crafting, refining or upgrading** | Energy → SHIELD, and energy → the upgrade taken at each split |
+| A threat that escalates and the player manages against | The storm line accelerates; hazard density ramps to full by level 80 |
+
+The middle leg is the one to protect. It went thin once, when two of three
+spends were deleted, and it is the leg a judge is most likely to fail us on.
 
 ## Working agreements
 
 - **One tower, one climber, one resource.** No second level, no second economy.
+  This is about avoiding a *second* half-built loop, not about keeping the
+  first one thin.
 - **Every mechanic must be a system, not decoration.** Visual polish scores
   zero, so a joke that lives in a sprite is wasted work.
 - **Keep numbers in one config object** near the top of the game source.

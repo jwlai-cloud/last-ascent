@@ -102,7 +102,13 @@
      * At half a second the best possible pace is two floors a second and the
      * scroll tops out just under it, so the last stretch is genuinely close.
      */
-    jumpRise: .20,           // seconds a leap takes — the ceiling rises with the line
+    /*
+     * Paced for a human thumb. At .20 the optimal cadence was a jump every
+     * 0.15s — nearly seven presses a second, which nobody sustains, and which
+     * only looked playable because a held key auto-repeated. At .38 the best
+     * possible pace is about 2.6 levels a second, which a fast tap can match.
+     */
+    jumpRise: .38,           // seconds a leap takes
     fallSpeed: 4,            // floors per second with nothing underfoot
     /*
      * What spikes cost. Knocking the climber down a single floor made mistakes
@@ -234,7 +240,8 @@
      * one punishes it: outrun the storm and you outrun your own income, so the
      * skill is riding just above the front. It makes the storm gap the most
      * interesting number on screen rather than merely the scariest, and it
-     * turns SURGE into a real dilemma — it saves your life and cuts your pay.
+     * turns the shield into a real dilemma — it saves your life and cuts your
+     * pay, out of the same number.
      */
     riskBands: [
       { within: 1.5, mult: 4, label: 'IN THE TEETH' },
@@ -336,17 +343,31 @@
     turnSwing: 1.25,         // radians the camera swings during a turn — never past edge-on
     hintDwell: 3.2,          // seconds a coaching line holds before a calmer one takes the slot
 
-    // Energy is the score AND the survival budget. One resource, three spends.
+    // Energy is the score AND the survival budget. One resource, one spend.
     /*
-     * Three spends with genuinely distinct jobs — preventive, reactive, and
-     * progress. "Heal" was cut with the health pips; a second way to undo a
-     * slip would have done the same job as surge.
+     * There were three — SHIELD, SURGE and GRAPPLE — and measurement killed
+     * two of them. A scripted run spent zero energy across twenty eight
+     * seconds while able to afford a shield 84% of that time, because the
+     * thumb never leaves the jump and three small buttons at the bottom of a
+     * portrait screen are not reachable mid-climb. Three spends that never
+     * fire are worse than one that does: they are the "six things that each
+     * half-work" the guidance names, and Focus is scored.
+     *
+     * What survives is the preventive one, on a key, dear enough to hurt.
+     * SURGE pushed the storm back, which is the multiplier the game is built
+     * on — paying to reduce your own pay rate needed a second of thought the
+     * player does not have. GRAPPLE bought height, and height is free: press
+     * the jump. Neither loss removes a decision that was actually being made.
      */
-/* Dearer, because energy is scarcer and a bonus that is always affordable is
-     * not a decision. */
-    cost: { shield: 9, surge: 12, grapple: 15 },
-    surgePush: 1.5,          // floors the storm is knocked back — exactly one slip
-    grappleClimb: 2,         // floors gained instantly: energy bought as height
+    /*
+     * Eighteen, double the nine it cost when there were three spends. It is
+     * the only sink for energy now, so its price alone sets how many hits a
+     * run can absorb: a full climb needs roughly nine of them, and the
+     * scripted climber can afford one only a tenth of the time. That is the
+     * decision — at nine it was reflex, at twenty-plus the tower became
+     * unwinnable for the bot (0 summits in 10 seeds against a target of 2).
+     */
+    cost: { shield: 18 },
     /*
      * Scaled to the tower, not a flat number. At a flat 50 across 300 levels a
      * careful climber who spent everything staying alive banked 47 while a
@@ -402,9 +423,9 @@
       * difficulty a human will feel — it is the point past which the tower
       * stops being beatable at all.
       */
-      SAFE:    { energy: .13, hazard: .06, gap: .04 },
-      DANGER:  { energy: .32, hazard: .32, gap: .20 },
-      UNKNOWN: { energy: .22, hazard: .19, gap: .12 },   // placeholder; derived per section
+      SAFE:    { energy: .13, hazard: .055, gap: .036 },
+      DANGER:  { energy: .32, hazard: .28,  gap: .175 },
+      UNKNOWN: { energy: .22, hazard: .17,  gap: .11 },   // placeholder; derived per section
     },
 
     /*
@@ -420,7 +441,58 @@
      * and the top is genuinely dense.
      */
     dangerFloor: .30,        // multiplier on hazards and gaps at level zero
-    dangerCeiling: 1.9,      // and at the summit — the top is meant to be nasty
+    /*
+     * The level danger stops rising at. It used to be the summit, so density
+     * climbed across all 300 levels and the first two hundred were reported —
+     * accurately — as easy: at level 200 the multiplier was only 1.23 of an
+     * eventual 1.7, and half the climb sat below what level 150 felt like.
+     * Reaching full danger early means the back half is a plateau you have to
+     * survive rather than a slope you outgrow.
+     */
+    dangerFull: 80,
+    /*
+     * CAMERA FRAMING.
+     *
+     * The view is anchored to the storm, not the climber, and deliberately so:
+     * the line is the clock, and holding it at a fixed place on screen is what
+     * makes closing on it feel like closing on it.
+     *
+     * But it was anchored to the storm and NOTHING ELSE, with no clamp, and a
+     * climber gains on the line at roughly a level a second — so a competent
+     * run spent about 80% of its frames with the climber above the top of the
+     * frame, and past a gap of about 16 he was not on screen at all. Invisible
+     * is not the same as penalised: outrunning the storm is meant to cost the
+     * multiplier, not the ability to see yourself.
+     *
+     * camAnchor keeps the storm-anchored framing exactly as it was inside the
+     * zone the game is actually played in, and camLead takes over past that,
+     * so the climber is always framed with room above him to aim into.
+     */
+    camAnchor: 6.4,          // levels above the storm the view centres on when near it
+    camLead: 1.0,            // levels below the climber it centres on once he has outrun it
+    /*
+     * Eased when the leap slowed to a human rhythm. The old density was tuned
+     * against a bot managing a jump every 0.15s — a cadence only reachable
+     * because a held key auto-repeated. At half that climb speed the same
+     * density took a careful climber from seven summits in ten to one.
+     */
+    /*
+     * 1.7, and it was briefly cut to 1.35 for a bad reason worth recording.
+     * Deleting SURGE removed the scripted climber's constant crutch, the ten
+     * seed regression fell to zero summits, and the density was reduced to buy
+     * them back. But that bot looked exactly one level ahead, so a lane clear
+     * now and blocked above trapped it every time — at this very setting it
+     * scored 0 summits and 75 average levels where a four level lookahead
+     * scored 2 and 159. The tower was never too dense; the measurement was too
+     * blind, and a real design change was made to satisfy it.
+     *
+     * The suite reads four levels ahead now, roughly what fits on the portrait
+     * screen and roughly what a person works from, so 1.7 stands. Sealed
+     * floors — all three lanes blocked, where survival is luck rather than
+     * skill — measure 0% at every density tested up to 2.4, so this can go
+     * higher on evidence if play says it should.
+     */
+    dangerCeiling: 1.2,      // and from dangerFull upward — a plateau, not a slope
   };
 
   const colors = {
@@ -428,11 +500,24 @@
     climber: 0xffd9a0, suit: 0x3f7fd6, pack: 0x2b3350,
     energy: 0x66e0c8, hazard: 0xe0556b, splitPlate: 0x4a5a8f, cache: 0xffc23d, storm: 0x4a2440, rubble: 0x6b5560, window: 0x141c33, windowLit: 0x5f7fc4, city: 0x0d1424,
     safe: 0x63c47a, danger: 0xe0556b, unknown: 0xc79bf0, beacon: 0xffe066,
+    // Worn upgrades. Each one distinct, because their whole job is to be told apart.
+    kitAir: 0x8fd8ff, kitMagnet: 0xc79bf0, kitSpring: 0x63c47a, kitGrip: 0xffb454,
+    kitSpent: 0x4c5470,
   };
+
+  /* The alert ring's colour per hint tone. Same tones the hint line uses, so
+   * the ring and the text can never disagree about how bad things are. */
+  /* Only tones that can actually reach ALERT_RANK. 'close' sits at rank 3 and
+   * could never fire, and a map entry that cannot fire is a lie about what the
+   * ring can say. */
+  const ALERT = { danger: colors.hazard, turning: colors.unknown, cache: colors.cache };
+  /* Below this rank the hint is informational — a route name, a nudge — and a
+   * ring that is always lit is a ring nobody looks at. */
+  const ALERT_RANK = 4;
 
   const ui = Object.fromEntries([
     'game', 'floor', 'energy', 'health', 'best', 'stormGap', 'multiplier', 'feed', 'routeHint',
-    'buyShield', 'buySurge', 'buyGrapple', 'costShield', 'costSurge', 'costGrapple',
+    'buyShield', 'costShield',
     'startModal', 'modalButton', 'modalTitle', 'modalCopy', 'modalIcon', 'modalKicker',
     'reset', 'mute', 'summitGoal', 'splitChoice', 'pick0', 'pick1', 'pick2',
     'climbFill', 'climbNext', 'turnWarn', 'cacheChip', 'orient',
@@ -515,7 +600,7 @@
     if (kind === 'dead') { noise({ dur: .7, gain: .3, freq: 300 }); tone({ freq: 160, to: 40, dur: .8, type: 'sawtooth', gain: .18 }); }
   }
 
-  let renderer, scene, camera, world, climberMesh, climberLimbs, shieldMesh, stormMesh, lightning;
+  let renderer, scene, camera, world, climberMesh, climberLimbs, kit, shieldMesh, stormMesh, lightning;
   let keyLight, stormLight, orbit = 0, orbitTarget = 0, clock = 0, last = 0;
   let shake = 0, flash = 0, lightningTimer = 1;
   let game = null;
@@ -664,6 +749,75 @@
     };
     // A pack, so the silhouette is asymmetric and reads as facing away from you.
     mesh(new T.BoxGeometry(.26, .3, .14), mat(colors.pack, .6), climberMesh, 0, .22, -.2);
+
+    /*
+     * WORN UPGRADES.
+     *
+     * Every perk was invisible. A shield had a bubble, so the player could see
+     * it; the five upgrades taken at splits changed nothing you could look at,
+     * and AIR SAVE was the worst of them — it is the only one whose state
+     * changes DURING a fall, and the moment you need to know whether you still
+     * have it is the moment you are falling. "There is no notification like a
+     * shield" was the report, and it was exactly right.
+     *
+     * So each perk is a thing the climber wears, on a different part of the
+     * silhouette so they read at a glance and stack without merging: a flight
+     * cap, a halo, boots, gloves, pack pips. This is not decoration — it is
+     * the only channel these mechanics have. Clarity is the one visual bar the
+     * guidance sets, and an invisible mechanic fails it.
+     */
+    const kitMat = (hex) => {
+      const m = mat(hex, .4);
+      m.emissive = new T.Color(hex);
+      m.emissiveIntensity = .55;
+      return m;
+    };
+    kit = {
+      /* AIR SAVE — a flight cap. Lit means the extra press is still in hand;
+       * it goes dead grey the instant it is spent and comes back on landing,
+       * so the answer to "can I save this fall" is on screen during the fall. */
+      /* Sits ON the skull, not in it. The head is a sphere of r=.2 centred at
+       * .52, so its crown is at .72 — a cap centred lower than that buries its
+       * own base and shows a sliver. */
+      cap: mesh(new T.ConeGeometry(.23, .28, 4), kitMat(colors.kitAir), climberMesh, 0, .86, 0),
+      // MAGNET — a halo, because its effect happens in the air around him.
+      halo: mesh(new T.TorusGeometry(.3, .04, 6, 14), kitMat(colors.kitMagnet), climberMesh, 0, 1.06, 0),
+      // SPRING — boots. It changes how he leaves the ground, so it is on his feet.
+      bootL: mesh(new T.BoxGeometry(.17, .1, .19), kitMat(colors.kitSpring), climberMesh, -.11, -.34, .01),
+      bootR: mesh(new T.BoxGeometry(.17, .1, .19), kitMat(colors.kitSpring), climberMesh, .11, -.34, .01),
+      // GRIP — gloves. It changes what happens when he takes a hit, so: hands.
+      gloveL: mesh(new T.BoxGeometry(.14, .13, .14), kitMat(colors.kitGrip), climberMesh, -.24, .16, .04),
+      gloveR: mesh(new T.BoxGeometry(.14, .13, .14), kitMat(colors.kitGrip), climberMesh, .24, .16, .04),
+      /*
+       * THE ALERT RING.
+       *
+       * Warnings lived only on the hint line at the top of the screen, and
+       * "my focus is on the man and nearby levels, hard to read notice and
+       * warning at top" is the whole problem with that: the player's eyes are
+       * on the climber and the two or three levels around him, and a line of
+       * text eight hundred pixels away is outside that. A turn telegraphed for
+       * 1.6 seconds is worth nothing if the telegraph is somewhere nobody is
+       * looking.
+       *
+       * This does not invent a second priority ladder — it renders the one
+       * hint() already computes, at the climber's feet, as colour and pulse.
+       * The text stays where it is for anyone who wants to read it; this is
+       * the same information where the eyes already are.
+       */
+      ring: mesh(new T.TorusGeometry(.54, .085, 8, 24), kitMat(colors.hazard), climberMesh, 0, -.42, 0),
+
+      /* SPARE SHIELD — pips on the SHOULDERS, one per stack. They were on the
+       * back of the pack, where the camera never sees them: a marker behind
+       * the model is the same as no marker. */
+      spare: [0, 1].map(i => mesh(new T.SphereGeometry(.075, 8, 6), kitMat(colors.energy),
+        climberMesh, i ? .21 : -.21, .42, .06)),
+    };
+    kit.halo.rotation.x = Math.PI / 2;
+    kit.ring.rotation.x = Math.PI / 2;
+    kit.ring.material.transparent = true;
+    for (const m of [kit.cap, kit.halo, kit.ring, kit.bootL, kit.bootR, kit.gloveL, kit.gloveR, ...kit.spare]) {
+      m.visible = false;
+    }
 
     /* A bought shield was only visible as a highlight on the button that bought
      * it, which is the wrong place — the player is looking at the climber. */
@@ -859,8 +1013,12 @@
     for (let f = fromFloor; f < fromFloor + span; f++) {
       for (let lane = 0; lane < config.lanes; lane++) {
         const route = config.routes[routeByLane[lane]];
+        /* Danger reaches full at `dangerFull`, not at the summit. Ramping
+         * across all 300 levels meant the back half of the climb was the only
+         * part that bit, and the first two thirds read as easy — the tower has
+         * to be dangerous while the player still has lives to lose. */
         const ramp = config.dangerFloor +
-          (config.dangerCeiling - config.dangerFloor) * Math.min(1, f / config.summit);
+          (config.dangerCeiling - config.dangerFloor) * Math.min(1, f / config.dangerFull);
         const roll = game.rand();
         let kind = null;
 
@@ -877,6 +1035,25 @@
           // Caches only appear where the danger already is.
           kind = route.hazard > .2 && game.rand() < config.cacheChance ? 'cache' : 'energy';
         }
+        /*
+         * THE OPENING IS CLEAN BY CONSTRUCTION, not cleaned up afterwards.
+         *
+         * It used to be fixed by deleting cells in reset() after the section
+         * had already been generated AND drawn — and drawCell() appends a new
+         * group rather than replacing one, so a deletion after drawing cannot
+         * take the mesh with it. Doing it here means the wrong cell never
+         * exists, and there is nothing to un-draw.
+         */
+        if (f <= config.openingSafe && (kind === 'gap' || kind === 'hazard')) kind = null;
+        /*
+         * And level zero carries nothing to collect. The climber STARTS
+         * standing on level zero, so a fragment in a neighbouring lane there
+         * can only be had by sidestepping before the very first jump — while
+         * the game is telling him to jump — and once he jumps he can never
+         * come back down. Drawing a pickup that cannot be taken teaches the
+         * player, in the first two seconds, that pickups are unreliable.
+         */
+        if (f === 0 && (kind === 'energy' || kind === 'cache')) kind = null;
         if (kind) game.cells.set(`${lane}:${f}`, kind);
       }
       // A floor with no way through is a dead end, not difficulty. Always clear one.
@@ -1057,24 +1234,11 @@
       taughtJump: false, taughtSwipe: false,
     };
 
+    /* The clean opening and the empty level zero are enforced inside
+     * generateSection now, so the grid is right the first time and the scene
+     * drawn from it is right too. Nothing to delete here. */
     ensureGenerated();
-    /*
-     * A clean opening. Generation could put a gap under the starting lane, so
-     * a run began by falling before the player had touched anything, and it
-     * could put spikes directly above, so the very first jump was punished.
-     * The first couple of levels are plain floor in every lane.
-     */
-    for (let f = 0; f <= config.openingSafe; f++) {
-      for (let l = 0; l < config.lanes; l++) {
-        // Only clear what can HURT. Wiping the cell entirely also deleted the
-        // energy, so the first three levels had nothing to pick up and the
-        // collecting mechanic looked broken for the whole opening.
-        const k = game.cells.get(`${l}:${f}`);
-        if (k === 'hazard' || k === 'gap') game.cells.delete(`${l}:${f}`);
-      }
-    }
-    // ...but he still needs solid ground directly underfoot.
-    game.cells.delete(`${game.lane}:0`);
+    buildSummitFigure();
     sync();
   }
 
@@ -1294,6 +1458,13 @@
     return { within: Infinity, mult: config.baseMult * boost, label: boost > 1 ? 'CACHE' : '' };
   }
 
+  /* Pure, and shared by the renderer and the test seam, so what a test reads
+   * is what the camera is actually doing rather than a copy that can drift. */
+  function cameraCentre() {
+    if (!game) return config.camAnchor;
+    return Math.max(game.storm + config.camAnchor, game.floor - config.camLead);
+  }
+
   function tick(dt) {
     game.hintTime += dt;
     game.elapsed += dt;
@@ -1411,22 +1582,137 @@
     game.spent += config.cost[kind];
     sound('spend');
     if (kind === 'shield') { game.shield = true; showFeed('SHIELDED'); }
-    if (kind === 'surge') { game.storm -= config.surgePush; showFeed('SURGE'); }
-    if (kind === 'grapple') {
-      /* Resolve where it puts you, exactly as a landing does. It used to add
-       * two to the height and nothing else, so a grapple onto a fragment did
-       * not collect it, a grapple onto spikes was free, and a grapple over a
-       * gap left the climber standing on air. */
-      game.airborne = 0;
-      game.floor = Math.floor(game.floor + .0001) + config.grappleClimb;
-      showFeed('GRAPPLE');
-      land();
-    }
     sync();
     return true;
   }
 
+  /*
+   * Drive the worn upgrades from state. One function, so a new perk is one
+   * line here rather than a new system, and so there is exactly one place
+   * where "what he is wearing" can disagree with "what he has".
+   */
+  function syncKit() {
+    if (!kit || !game) return;
+    /*
+     * When a perk is taken the feed names it and a new thing appears on the
+     * climber, but nothing connects the two — "what is the hat triangle for?"
+     * is what that costs. Popping the marker as it is granted puts the word
+     * and the object on screen together, which is the only moment the player
+     * can learn the mapping.
+     */
+    game.kitSeen ||= {};
+    game.kitPop ||= {};
+    for (const id of ['airSave', 'magnet', 'spring', 'grip', 'spareShield']) {
+      if (game.kitSeen[id] !== game.upgrades[id]) {
+        if (game.kitSeen[id] !== undefined && game.upgrades[id] > (game.kitSeen[id] || 0)) {
+          game.kitPop[id] = game.elapsed;
+        }
+        game.kitSeen[id] = game.upgrades[id];
+      }
+    }
+    /* Driven off game.elapsed rather than the render clock, because it is
+     * called from tick() as well: a paused test advancing by step() must see
+     * the same worn state a player would, or the seam tests nothing. */
+    const clock = game.elapsed;
+    const u = game.upgrades, on = climberMesh.visible;
+    /* A short, big pop — it has to be noticed against a moving screen. */
+    const popOf = id => {
+      const t = game.elapsed - (game.kitPop[id] ?? -99);
+      return t >= 0 && t < 1.2 ? 1 + (1 - t / 1.2) * .8 : 1;
+    };
+    const wear = (m, show, hex, id) => {
+      m.visible = show && on;
+      if (!m.visible) return;
+      m.material.color.setHex(hex);
+      m.material.emissive.setHex(hex);
+      if (id) m.scale.setScalar(popOf(id));
+    };
+
+    /* The one that changes mid-fall, and the only reason this exists. Grey the
+     * instant it is spent, lit again on landing. */
+    wear(kit.cap, u.airSave > 0, game.usedAirSave ? colors.kitSpent : colors.kitAir, 'airSave');
+    if (kit.cap.visible && !game.usedAirSave) {
+      kit.cap.material.emissiveIntensity = .5 + Math.sin(clock * 5) * .18;   // a ready thing pulses
+    } else {
+      kit.cap.material.emissiveIntensity = .12;
+    }
+
+    wear(kit.halo, u.magnet > 0, colors.kitMagnet, 'magnet');
+    if (kit.halo.visible) kit.halo.rotation.z = clock * 1.6;
+
+    /* Stacking perks brighten rather than multiply, so three stacks read as
+     * "more of the same thing" instead of as three different pickups. */
+    const glow = n => .3 + .25 * n;
+    for (const m of [kit.bootL, kit.bootR]) {
+      wear(m, u.spring > 0, colors.kitSpring, 'spring');
+      if (m.visible) m.material.emissiveIntensity = glow(u.spring);
+    }
+    for (const m of [kit.gloveL, kit.gloveR]) {
+      wear(m, u.grip > 0, colors.kitGrip, 'grip');
+      if (m.visible) m.material.emissiveIntensity = glow(u.grip);
+    }
+    kit.spare.forEach((m, i) => wear(m, u.spareShield > i, colors.energy, 'spareShield'));
+
+    /* The ring mirrors hint()'s own ranking rather than re-deciding urgency.
+     * Colour says what kind of trouble, pulse rate says how urgent, and a turn
+     * additionally spins it — the one warning that is about the world moving
+     * rather than about the level above. */
+    const rank = game.hintRank ?? -1;
+    const tone = game.hintTone || '';
+    const alert = game.running && rank >= ALERT_RANK && ALERT[tone] !== undefined;
+    kit.ring.visible = alert && on;
+    if (kit.ring.visible) {
+      const hex = ALERT[tone];
+      kit.ring.material.color.setHex(hex);
+      kit.ring.material.emissive.setHex(hex);
+      const beat = .5 + Math.sin(clock * (4 + rank)) * .5;    // higher rank, faster
+      /* Bold on purpose. This is replacing a line of text the player told us
+       * they cannot read while playing, so a subtle ring fails the same way. */
+      kit.ring.material.emissiveIntensity = .8 + beat * 1.3;
+      kit.ring.material.opacity = .75 + beat * .25;
+      kit.ring.scale.setScalar(1 + beat * .18);
+      kit.ring.rotation.z = tone === 'turning' ? clock * 3.4 : 0;
+    }
+  }
+
   // ── ending ─────────────────────────────────────────────────────────────────
+
+  /*
+   * THE PERSON AT THE TOP.
+   *
+   * The summit used to be an abstraction: a number, and a glowing ball that
+   * only existed once you had already won. "Reach level 300" is a target, not
+   * a reason. Someone standing up there — built at reset, so they are on the
+   * tower from the first frame and come into view as you climb — turns the
+   * goal into a thing you can look at, which is the one visual bar the
+   * guidance actually sets.
+   *
+   * This is framing, and it is deliberately ONLY framing. They cannot be hurt,
+   * they do not move, there is no escort, no rescue timer and no second win
+   * condition. The moment this grows a mechanic it stops being a reason to
+   * climb and becomes a second game to half-finish, which is the exact failure
+   * the Focus criterion is scored on.
+   */
+  function buildSummitFigure() {
+    const g = new T.Group();
+    g.position.set(0, config.summit + 1, 0);      // tower centre, on top of the last ledge
+    game.props.add(g);
+    const coat = mat(colors.beacon, .55);
+    coat.emissive = new T.Color(colors.beacon);
+    coat.emissiveIntensity = .35;
+    mesh(new T.SphereGeometry(.19, 12, 10), coat, g, 0, .5, 0);
+    mesh(new T.BoxGeometry(.32, .42, .25), coat, g, 0, .19, 0);
+    // Arms up. At a distance the silhouette has to say "someone is up there".
+    mesh(new T.BoxGeometry(.1, .34, .1), coat, g, -.26, .42, 0).rotation.z = .5;
+    mesh(new T.BoxGeometry(.1, .34, .1), coat, g, .26, .42, 0).rotation.z = -.5;
+    /* A standing light beside them, so they are findable against the tower
+     * from further away than the figure itself reads at. */
+    const lamp = mesh(new T.SphereGeometry(.16, 10, 8),
+      new T.MeshBasicMaterial({ color: colors.beacon }), g, .5, .2, 0);
+    game.spins.push(lamp);
+    lamp.userData.baseY = .2;
+    game.summitFigure = g;
+  }
 
   function summit() {
     const g = new T.Group();
@@ -1436,7 +1722,7 @@
     b.material.emissive = new T.Color(colors.beacon);
     b.material.emissiveIntensity = .9;
     sound('summit');
-    end('summit', 'ESCAPED', `Beacon lit with ${game.energy} energy still in hand, plus a ${config.summitBonus} summit bonus.`);
+    end('summit', 'REACHED THEM', `You got to the top with ${game.energy} energy still in hand, plus a ${config.summitBonus} summit bonus.`);
   }
 
   function end(kind, title, copy) {   // eslint-disable-line no-unused-vars
@@ -1507,16 +1793,14 @@
     ui.multiplier.className = `multiplier${band.mult >= 4 ? ' teeth' : band.mult >= 2 ? ' close' : ''}`;
 
     ui.costShield.textContent = config.cost.shield;
-    ui.costSurge.textContent = config.cost.surge;
-    ui.costGrapple.textContent = config.cost.grapple;
-    /* A disabled button that says nothing teaches nothing. Each one now states
-     * either what it does or exactly how much more energy it needs. */
-    for (const [kind, btn] of [['shield', ui.buyShield], ['surge', ui.buySurge], ['grapple', ui.buyGrapple]]) {
-      const afford = canAfford(kind);
-      btn.disabled = !afford;
-      const short = config.cost[kind] - game.energy;
-      const note = btn.querySelector('small');
-      if (kind === 'shield' && game.shield) note.textContent = 'active';
+    /* A disabled button that says nothing teaches nothing: it states either
+     * what it does or exactly how much more energy it needs. */
+    {
+      const afford = canAfford('shield');
+      ui.buyShield.disabled = !afford;
+      const short = config.cost.shield - game.energy;
+      const note = ui.buyShield.querySelector('small');
+      if (game.shield) note.textContent = 'active';
       else if (!afford && short > 0) note.textContent = `need ${short} more`;
       else note.textContent = note.dataset.label;
     }
@@ -1561,6 +1845,12 @@
       // the pulse tightens as it arrives, so urgency is felt not read
       ui.turnWarn.style.animationDuration = `${Math.max(.12, game.flipTimer / 5)}s`;
     }
+
+    /* Here rather than in render(), so what the climber wears is updated by
+     * the same call that updates the HUD — including under a paused test
+     * stepping the simulation by hand, and including a spend, which changes
+     * state without a frame going by. */
+    syncKit();
   }
 
   /*
@@ -1589,6 +1879,12 @@
     }
     if (game.flipPhase === 'turn') return [9, 'HOLD ON', 'turning'];
 
+    /* Rank 6 — above the per-level threats, below a turn. The single spend
+     * only earns its place if the player is told when it is worth making, and
+     * one life with a shield affordable is exactly that moment. */
+    if (game.health === 1 && canAfford('shield')) {
+      return [6, `ONE LIFE LEFT — PRESS S TO SHIELD (${config.cost.shield})`, 'danger'];
+    }
     if (game.health === 1) return [5, 'ONE LIFE LEFT — reach the next milestone to patch up', 'danger'];
 
     if (game.cache > 0) return [4, `CACHE BURNING — dive at the storm, everything pays ×${riskBand().mult}`, 'cache'];
@@ -1708,7 +2004,7 @@
     /* The camera rides the SIGHT LINE rather than the climber. The bottom of
      * frame is what kills, so it is what has to be anchored — and it is what
      * makes the drop legible as the climber slides toward it. */
-    const centre = game.storm + 6.4 + Math.sin(clock * 55) * shake * .3;
+    const centre = cameraCentre() + Math.sin(clock * 55) * shake * .3;
 
     /*
      * A slow swing around the tower at each split. Deliberately visual only:
@@ -1787,13 +2083,29 @@
       if (!muted) sound('spend');
     });
     ui.buyShield.addEventListener('click', () => buy('shield'));
-    ui.buySurge.addEventListener('click', () => buy('surge'));
-    ui.buyGrapple.addEventListener('click', () => buy('grapple'));
 
     window.addEventListener('keydown', e => {
+      /*
+       * Ignore auto-repeat. Without this, HOLDING space fires keydown at the
+       * operating system's repeat rate and calls jump() every time, so the
+       * player could hold one key and the tower climbed itself — which is the
+       * exact model this game was rewritten to get rid of, quietly restored by
+       * a missing three-word guard. Every difficulty reading taken before this
+       * was measured against a game that could be held down.
+       */
+      if (e.repeat) return;
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLane(-1);
       if (e.code === 'ArrowRight' || e.code === 'KeyD') moveLane(1);
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); jump(); }
+
+      /*
+       * The shield on a key, because on the button alone it was dead weight —
+       * a scripted run spent nothing in twenty eight seconds while able to
+       * afford one for most of it, since the thumb never leaves the jump. S
+       * sits under the left hand already resting on A and D, so shielding
+       * costs no jump.
+       */
+      if (e.code === 'KeyS') buy('shield');
     });
 
     /* Swipe or tap, on the arena only. A short movement is a tap and jumps; a
@@ -1837,6 +2149,28 @@
       cache: game?.cache, caches: game?.caches,
       flipPhase: game?.flipPhase, flipTimer: game?.flipTimer, flipSwaps: game?.flipSwaps, turns: game?.turns,
       upgrades: game && { ...game.upgrades }, usedAirSave: game?.usedAirSave,
+      hintRank: game?.hintRank, hintTone: game?.hintTone || '',
+      /* Where the camera is looking, so a test can assert the climber is
+       * inside the frame rather than assume it. */
+      cameraCentre: game ? cameraCentre() : null,
+      cameraHalfHeight: camera ? Math.tan(camera.fov * Math.PI / 360) * 13 : null,
+      /* What the climber is visibly WEARING, as opposed to what he owns. The
+       * two drifting apart is the bug this exists to catch. */
+      worn: kit && {
+        cap: kit.cap.visible ? (game?.usedAirSave ? 'spent' : 'ready') : null,
+        magnet: kit.halo.visible,
+        spring: kit.bootL.visible,
+        grip: kit.gloveL.visible,
+        spare: kit.spare.filter(m => m.visible).length,
+        /* What the ring is saying, so a test can assert the warning reached
+         * the climber and not only the hint line at the top. */
+        alert: kit.ring.visible ? (game?.hintTone || '') : null,
+      },
+      /* The person at the top, so a test can assert they are on the tower from
+       * the start rather than conjured at the moment of winning. */
+      summitFigure: game?.summitFigure
+        ? { y: game.summitFigure.position.y, visible: game.summitFigure.visible }
+        : null,
       upgradesAhead: game && upgradesAt(game.floor + config.splitEvery)?.map(u => u.id),
       airborne: game?.airborne, coyote: game?.coyote, buffered: game?.buffered, recover: game?.recover,
       routes: game && routesAt(game.floor), routesAhead: game && routesAt(game.floor + config.splitEvery),
@@ -1859,6 +2193,16 @@
     seed: n => { const was = game.running; reset(n); game.running = was; },
     mute: on => { muted = !!on; },
     grant: (id, n = 1) => { game.upgrades[id] = n; sync(); },
+    /* Pickup meshes that outlived their cell. The scene and the grid must
+     * agree, and a mesh left behind is a fragment the player can see and can
+     * never take. */
+    ghostPickups: () => {
+      let ghosts = 0;
+      for (const [key, m] of game.meshes) {
+        if (!game.cells.has(key) && m.parent && !game.popping.includes(m)) ghosts++;
+      }
+      return ghosts;
+    },
     cellScreenX: (lane, floor) => {
       const g = game.cellGroups.find(c => c.userData.lane === lane && Math.round(c.position.y) === floor);
       return g ? g.position.x : null;

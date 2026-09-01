@@ -56,16 +56,12 @@
       <!-- Energy is the score and the fuel, so spending is always visible next
            to the number it comes out of. -->
       <section class="spend-panel">
-        <p class="spend-copy">Energy is your score <b>and</b> your fuel. Ride close to the storm to earn more — spending to escape it costs you the run.</p>
+        <p class="spend-copy">Energy is your score <b>and</b> your fuel. Ride close to the storm to earn more — the shield you buy is score you give up.</p>
+        <!-- One spend, not three. Three small buttons went unpressed because
+             the thumb never leaves the jump; one wide one with a key does not. -->
         <div class="spend-row" aria-label="Spend energy">
-          <button class="spend" id="buyShield" type="button" aria-label="Shield, absorbs one hit">
-            <span class="icon">🛡</span><span class="name">SHIELD</span><small data-label="absorb one hit">absorb one hit</small><b id="costShield">6</b>
-          </button>
-          <button class="spend" id="buySurge" type="button" aria-label="Surge, pushes the storm back">
-            <span class="icon">⇡</span><span class="name">SURGE</span><small data-label="push storm back">push storm back</small><b id="costSurge">8</b>
-          </button>
-          <button class="spend" id="buyGrapple" type="button" aria-label="Grapple two floors upward">
-            <span class="icon">⇱</span><span class="name">GRAPPLE</span><small data-label="+2 floors">+2 floors</small><b id="costGrapple">10</b>
+          <button class="spend" id="buyShield" type="button" aria-label="Shield, absorbs one hit. Keyboard shortcut S">
+            <kbd>S</kbd><span class="icon">🛡</span><span class="name">SHIELD</span><small data-label="absorb one hit">absorb one hit</small><b id="costShield">20</b>
           </button>
         </div>
       </section>
@@ -75,7 +71,7 @@
           <div class="modal-icon" id="modalIcon">🌩️</div>
           <p id="modalKicker">SURVIVAL &amp; RESOURCE MANAGEMENT</p>
           <h2 id="modalTitle">The Last Ascent</h2>
-          <p id="modalCopy"><b>Nothing carries you up.</b> Press <b>SPACE</b> (or tap) and you leap one level; stand still and the tower falls away beneath you. Steer with <b>A / D</b> or a swipe — you can steer in mid-air, so jump on the beat and pick where you land. One perk, <b>AIR SAVE</b>, buys a second press while you are falling — that is why a double tap sometimes carries you over a hole. Land on <b>spikes</b> and it costs a life and your footing; fall below the <b>storm line</b> and it costs a life too. Energy is your score <b>and</b> your fuel, and it pays <b>×2 within three levels of the storm, ×4 within one and a half</b> — so climbing too fast outruns your own pay. Gold is always worth taking. Every few levels the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>, each holding a different upgrade — and the tower sometimes <b>turns</b>, swapping which side each lane is on, with a second and a half of warning. Three lives, and the tower gets nastier the higher you go. Every thirtieth level banks your score and patches one life back. Reach <b>300</b> and keep the lot.</p>
+          <p id="modalCopy"><b>Someone is stranded at the top of this tower, and the storm is climbing faster than they can wait.</b> <b>Nothing carries you up.</b> Press <b>SPACE</b> (or tap) and you leap one level; stand still and the tower falls away beneath you. Steer with <b>A / D</b> or a swipe — you can steer in mid-air, so jump on the beat and pick where you land. One perk, <b>AIR SAVE</b>, buys a second press while you are falling — that is why a double tap sometimes carries you over a hole; the <b>cone on his head</b> glows while it is still available and greys out the moment you spend it. <b>Every perk you take is something he wears</b> — cone on the head, halo, boots, gloves, shoulder pips — and it pops as you take it so you can see which is which. <b>Watch the climber, not this text:</b> a <b>red ring at his feet</b> means danger in your lane right now, and a <b>violet spinning ring</b> means the tower is about to turn. Land on <b>spikes</b> and it costs a life and your footing; fall below the <b>storm line</b> and it costs a life too. Energy is your score <b>and</b> your fuel, and it pays <b>×2 within three levels of the storm, ×4 within one and a half</b> — so climbing too fast outruns your own pay. Gold is always worth taking. Every few levels the lanes split into <b>safe</b>, <b>danger</b> and <b>unknown</b>, each holding a different upgrade — and the tower sometimes <b>turns</b>, swapping which side each lane is on, with a second and a half of warning. Three lives — and one spend: <b>S</b> (or the button) buys a <b>SHIELD</b> that eats the next hit, straight out of your score. The tower gets nastier the higher you go. Every thirtieth level banks your score and patches one life back. Reach <b>300</b>, get to them, and keep the lot.</p>
           <button id="modalButton" type="button">START CLIMBING</button>
         </div>
       </section>

@@ -99,26 +99,65 @@ async function fresh(seed = 1) {
   return state();
 }
 
+/*
+ * STEERING, shared by every policy in this file.
+ *
+ * It used to look exactly one level ahead, and that made it a far weaker
+ * player than a person — a lane that is clear now but blocked above is a trap
+ * a one-level bot walks into every single time. That weakness was not
+ * harmless: it read as difficulty, and a real density reduction was made to
+ * buy back summits the bot was losing to its own blindness. At the same
+ * setting, one-level scored 0 summits and 75 average levels where lookahead
+ * scored 2 and 159.
+ *
+ * A measuring instrument weaker than the player measures the instrument. Four
+ * levels is roughly what fits on the portrait screen, so it is roughly what a
+ * person is working from.
+ */
+const LOOKAHEAD = 4;
+const BEST_LANE = `const bestLane = (a, s, forced) => {
+  const up = Math.ceil(s.floor + 0.001);         // the level he will land on
+  let best = null, bestScore = -Infinity;
+  for (const l of [0, 1, 2]) {
+    const here = a.cellAt(l, up);
+    if (here === 'gap' || here === 'hazard') continue;   // never aim at a hit
+    if (forced !== undefined && l !== forced) continue;
+    let score = 0;
+    for (let d = 0; d < ${LOOKAHEAD}; d++) {
+      const c = a.cellAt(l, up + d);
+      const w = Math.pow(0.6, d);                // the near future matters most
+      if (c === 'gap' || c === 'hazard') score -= 10 * w;
+      else if (c === 'cache') score += 6 * w;
+      else if (c === 'energy') score += 3 * w;
+    }
+    score -= Math.abs(l - s.lane) * 0.5;         // crossing lanes is not free
+    if (score > bestScore) { bestScore = score; best = l; }
+  }
+  return best;
+};`;
+
 /* Climb by jumping, steering to a safe lane first. Several tests need to
  * *arrive* somewhere; without this they stand still and get caught. */
-const CLIMB_TO = `const climbTo = (target, opts = {}) => {
+const CLIMB_TO = BEST_LANE + `
+const climbTo = (target, opts = {}) => {
   const a = window.ascent;
   let n = 0;
   while (a.getState().floorInt < target && a.getState().running && n < 40000) {
     const s = a.getState();
     const up = Math.ceil(s.floor + 0.001);       // the level he will land on
     const safe = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, up)));
-    const want = opts.lane !== undefined && safe.includes(opts.lane) ? opts.lane
-      : (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane));
+    const want = bestLane(a, s, opts.lane) ?? (opts.lane !== undefined && safe.includes(opts.lane) ? opts.lane
+      : (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane)));
     /* Jump the instant you land, and pick the landing lane in the air.
      * Steering only while grounded burns the beat and is strictly worse. */
     if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
     if (s.grounded) a.jump();
-    // A real climber spends to survive; without SURGE the line eventually wins
-    // and the helper reports a design failure that is really a policy gap.
+    /* A real climber spends to survive. These were an if/else chain, which
+     * meant a test pinning energy with keepEnergy never shielded at all — it
+     * survived anyway while the tower was gentle and started dying the moment
+     * it was not, which reads as a difficulty problem and is a helper bug. */
     if (opts.keepEnergy !== undefined) a.setEnergy(opts.keepEnergy);
-    else if (s.health <= 1 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
-    else if (s.stormGap < 1.6 && s.energy >= s.cost.surge) a.buy('surge');
+    if (s.health <= 2 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
     a.step(0.05); n++;
   }
 };`;
@@ -421,6 +460,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     const a = window.ascent, out = {};
     a.setEnergy(100);
     out.start = a.getState().energy;
+    out.collectedStart = a.getState().collected;
 
     a.buy('shield');
     out.shielded = a.getState().shield;
@@ -430,70 +470,79 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     for (let i = 0; i < 400 && !a.getState().grounded; i++) a.step(0.02);
     out.afterHit = { shield: a.getState().shield, slips: a.getState().slips };
 
-    const gapBefore = a.getState().stormGap;
-    a.buy('surge');
-    out.surge = +(a.getState().stormGap - gapBefore).toFixed(2);
-
-    const floorBefore = a.getState().floor;
-    a.buy('grapple');
-    out.grapple = +(a.getState().floor - floorBefore).toFixed(2);
-
     out.spent = a.getState().spent;
     out.left = a.getState().energy;
+    out.collected = a.getState().collected;
     return out;
   });
   check('SHIELD absorbs a hit instead of a knock-down',
     spends.shielded && spends.afterHit.slips === 0 && !spends.afterHit.shield,
     JSON.stringify(spends.afterHit));
-  check('SURGE pushes the line back', spends.surge > 1, `gap +${spends.surge}`);
-  check('GRAPPLE buys height directly', spends.grapple >= 2, `+${spends.grapple} levels`);
+  /* SURGE and GRAPPLE were deleted, so their tests are too. Keeping a test for
+   * a feature that no longer exists is how a suite starts lying. */
 
-  /* And it resolves what it pulls you onto, exactly as a landing does. It used
-   * to add two to the height and nothing else, so a grapple onto a fragment
-   * did not collect it, a grapple onto spikes was free, and a grapple over a
-   * gap left the climber standing on air. */
-  const pulled = await run(() => {
-    const a = window.ascent, out = {};
-
-    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
-    let st = a.getState();
-    a.setCell(st.lane, st.floorInt + 2, 'energy');
-    const before = a.getState().energy;
-    a.buy('grapple');
-    out.collected = a.getState().energy - (before - a.getState().cost.grapple);
-
-    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
-    st = a.getState();
-    a.setCell(st.lane, st.floorInt + 2, 'hazard');
-    const lives = a.getState().health;
-    a.buy('grapple');
-    out.hurt = lives - a.getState().health;
-
-    a.start(2); a.pause(true); a.mute(true); a.setEnergy(100);
-    st = a.getState();
-    a.setCell(st.lane, st.floorInt + 2, 'gap');
-    a.buy('grapple');
-    const airborneAt = a.getState().floorInt;
-    for (let i = 0; i < 200 && !a.getState().grounded; i++) a.step(0.02);
-    out.fell = { from: airborneAt, to: a.getState().floorInt };
-    return out;
-  });
-  check('GRAPPLE collects what it lands on', pulled.collected >= 1, `+${pulled.collected} energy`);
-  check('GRAPPLE onto spikes still hurts', pulled.hurt === 1, `${pulled.hurt} life`);
-  check('GRAPPLE over a gap drops you through it',
-    pulled.fell.to < pulled.fell.from, `level ${pulled.fell.from} -> ${pulled.fell.to}`);
+  /* Net of anything picked up on the way. */
+  const picked = spends.collected - spends.collectedStart;
   check('every spend comes off the energy you are scored on',
-    spends.left === spends.start - spends.spent,
-    `${spends.start} - ${spends.spent} = ${spends.left}`);
+    spends.left === spends.start - spends.spent + picked,
+    `${spends.start} - ${spends.spent} spent + ${picked} collected = ${spends.left}`);
 }
 
 {
   await fresh();
   const refused = await run(() => {
     window.ascent.setEnergy(0);
-    return [window.ascent.buy('shield'), window.ascent.buy('surge'), window.ascent.buy('grapple')];
+    return window.ascent.buy('shield');
   });
-  check('spends are refused without energy', refused.every(r => r === false), refused.join(','));
+  check('the spend is refused without energy', refused === false, String(refused));
+}
+
+/*
+ * The spend has to be reachable, which is the reason two of them were deleted.
+ * A scripted run spent zero energy in twenty eight seconds while able to
+ * afford a shield for most of it, because the thumb never leaves the jump and
+ * three small buttons at the bottom of a portrait screen are not reachable
+ * mid-climb. So: one spend, on a key, and both routes tested.
+ */
+{
+  await fresh();
+  await run(() => { window.ascent.pause(true); window.ascent.mute(true); window.ascent.setEnergy(200); });
+
+  const before = await state();
+  await page.keyboard.press('KeyS');
+  const afterKey = await state();
+  check('S buys a shield without letting go of the jump',
+    afterKey.shield && afterKey.spent - before.spent === before.cost.shield,
+    `spent ${afterKey.spent - before.spent}`);
+
+  /* Auto-repeat must not drain the bank. The jump had exactly this bug: holding
+   * a key fired the handler at the OS repeat rate. */
+  await page.keyboard.down('KeyS');
+  await page.waitForTimeout(400);
+  await page.keyboard.up('KeyS');
+  const held = await state();
+  check('holding S does not buy repeatedly', held.spent === afterKey.spent,
+    `spent ${held.spent} after holding`);
+
+  await run(() => { window.ascent.grant('spareShield', 0); window.ascent.setEnergy(200); });
+  const dbl = await run(() => window.ascent.buy('shield'));
+  check('a second shield cannot be stacked', dbl === false);
+
+  const btn = await run(() => {
+    const b = document.getElementById('buyShield');
+    const r = b.getBoundingClientRect();
+    return { w: r.width, h: r.height, kbd: b.querySelector('kbd')?.textContent,
+             others: document.querySelectorAll('.spend').length };
+  });
+  /* One spend, not three. If a fourth button appears this fails, which is the
+   * point: Focus is scored and re-growing the panel should be deliberate. */
+  check('exactly one spend button, thumb-sized, showing its key',
+    btn.others === 1 && btn.kbd === 'S' && btn.h >= 44 && btn.w > 200,
+    `${btn.others} button, ${Math.round(btn.w)}x${Math.round(btn.h)}, key ${btn.kbd}`);
+
+  const costs = await run(() => Object.keys(window.ascent.getState().cost));
+  check('the config carries one cost and no orphans', costs.length === 1 && costs[0] === 'shield',
+    costs.join(','));
 }
 
 // ── caches ──────────────────────────────────────────────────────────────────
@@ -641,7 +690,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     `banked ${won.banked} holding ${won.energy}`);
   check('reaching the summit sets the best', (await state()).best === won.banked);
   check('no spends after the run is over',
-    (await run(() => { window.ascent.setEnergy(500); return window.ascent.buy('surge'); })) === false);
+    (await run(() => { window.ascent.setEnergy(500); return window.ascent.buy('shield'); })) === false);
 }
 
 // ── balance regression ──────────────────────────────────────────────────────
@@ -649,7 +698,8 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
 /* Careful play must beat careless. Spikes costing only a level once made
  * mistakes so cheap that a climber who never changed lane beat one who dodged. */
 {
-  const curve = await run(() => {
+  const curve = await run(`(() => {
+    ${BEST_LANE}
     const a = window.ascent;
     const play = (seed, mode) => {
       a.start(seed); a.pause(true); a.mute(true);
@@ -660,17 +710,15 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
         const s = a.getState();
         const up = Math.ceil(s.floor + 0.001);
         const safe = [0, 1, 2].filter(l => !['gap', 'hazard'].includes(a.cellAt(l, up)));
-        const rich = safe.filter(l => ['energy', 'cache'].includes(a.cellAt(l, up)));
         const want = mode === 'blind' ? s.lane
-          : (rich[0] ?? (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane)));
+          : (bestLane(a, s) ?? (safe.includes(s.lane) ? s.lane : (safe[0] ?? s.lane)));
         // Steer in the air; never spend a grounded frame on a lane change.
         if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
         if (s.grounded) a.jump();
-        /* A careful player shields when low and surges when crowded. Without
-         * these the policy is not careful, it is merely well-steered, and it
-         * loses to a reckless climber that never spends time repositioning. */
+        /* A careful player shields when low. Without it the policy is not
+         * careful, it is merely well-steered, and it loses to a reckless
+         * climber that never spends time repositioning. */
         if (mode !== 'blind' && s.health <= 2 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
-        else if (s.stormGap < 1.6 && s.energy >= s.cost.surge) a.buy('surge');
         a.step(0.05); t += 0.05;
       }
       return a.getState();
@@ -685,7 +733,7 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
       };
     };
     return { careful: tally('careful'), blind: tally('blind'), seeds: seeds.length };
-  });
+  })()`);
   /* Two in five, not three. The tower is deliberately punishing now, and this
    * scripted policy is a weaker player than a person — a human summited 300
    * on a build where the policy could not pass 159. It is a floor against the
@@ -749,6 +797,27 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     `${opening.hazards} hazards or gaps found in levels 0-2 across 12 seeds`);
   check('but there is still something to collect there', opening.energy > 0,
     `${opening.energy} pickups across 12 seeds`);
+
+  /* Level zero specifically carries NOTHING to collect. The climber starts
+   * standing on it, so a fragment in a neighbouring lane there can only be had
+   * by sidestepping before the first jump, and once he jumps he can never come
+   * back down. A pickup drawn and unreachable in the first two seconds teaches
+   * the player that pickups are unreliable. */
+  {
+    const zero = await run(() => {
+      const a = window.ascent, found = [];
+      for (const seed of [1, 7, 13, 21, 33, 41, 55, 68, 79, 84, 91, 99]) {
+        a.start(seed); a.pause(true); a.mute(true);
+        for (const l of [0, 1, 2]) {
+          const c = a.cellAt(l, 0);
+          if (c === 'energy' || c === 'cache') found.push(`seed ${seed} lane ${l}`);
+        }
+      }
+      return found;
+    });
+    check('level zero offers nothing you cannot reach', zero.length === 0,
+      zero.length ? zero.join(', ') : 'no pickups at level 0 across 12 seeds');
+  }
 }
 
 /*
@@ -777,6 +846,369 @@ const CLIMB_TO = `const climbTo = (target, opts = {}) => {
     named(copy.text, copy.milestone, 'thirtieth', 'twentieth'), `every ${copy.milestone}`);
   check('the tutorial does not still claim the climb is automatic',
     !/cannot stop climbing|skips the whole/i.test(copy.text));
+  /* The spend went unused partly because the tutorial never mentioned it. */
+  check('the tutorial names the spend and the key that fires it',
+    /shield/i.test(copy.text) && /\bS\b/.test(copy.text), copy.text.match(/[^.]*SHIELD[^.]*/i)?.[0] ?? 'no mention');
+  check('the tutorial does not still promise the deleted spends',
+    !/surge|grapple/i.test(copy.text));
+  /* The markers went unexplained until a player asked what the triangle on the
+   * head was for. Learning it from outside the game is the same as not
+   * learning it, so the tutorial has to name both channels. */
+  check('the tutorial explains what the climber is wearing',
+    /cone|cap/i.test(copy.text) && /halo|boots|gloves|pips/i.test(copy.text),
+    copy.text.match(/[^.]*wears[^.]*/i)?.[0] ?? 'no mention of worn perks');
+  check('the tutorial explains the ring at his feet',
+    /ring/i.test(copy.text) && /red/i.test(copy.text) && /turn/i.test(copy.text),
+    copy.text.match(/[^.]*ring[^.]*/i)?.[0] ?? 'no mention of the ring');
+}
+
+/*
+ * EVERY WAY OF ARRIVING AT A CELL × EVERY KIND OF CELL.
+ *
+ * Three bugs shipped that share one shape, and all three were found by a human
+ * playing rather than by this suite: a sidestep onto a fragment did not collect
+ * it, a grapple onto one did not either, and a grapple onto spikes was free.
+ * Each had a hand-written test for the arrival it happened to be written for
+ * and none for the others, so the gaps were invisible. (GRAPPLE has since been
+ * deleted; the two arrivals that remain are still enumerated the same way.)
+ *
+ * This enumerates the matrix instead of guessing at it. Anything that reaches a
+ * cell must resolve it the same way.
+ */
+{
+  const matrix = await run(() => {
+    const a = window.ascent;
+    const cells = ['energy', 'cache', 'hazard', 'gap', null];
+    const arrivals = {
+      jump: st => { a.jump(); for (let i = 0; i < 400 && a.getState().airborne > 0; i++) a.step(0.02); },
+      sidestep: st => {
+        // put the target in a neighbouring lane and step into it
+        const to = st.lane === 0 ? 1 : st.lane - 1;
+        a.moveLane(Math.sign(to - st.lane));
+      },
+    };
+    const out = [];
+    for (const arrival of Object.keys(arrivals)) {
+      for (const kind of cells) {
+        a.start(9); a.pause(true); a.mute(true);
+        a.setStorm(-400);                       // isolate from the line
+        const st0 = a.getState();
+        const lvl = arrival === 'jump' ? st0.floorInt + 1 : st0.floorInt;
+        const lane = arrival === 'sidestep' ? (st0.lane === 0 ? 1 : st0.lane - 1) : st0.lane;
+        for (const l of [0, 1, 2]) a.setCell(l, lvl, l === lane ? kind : null);
+        a.grant('magnet', 0);                   // no sweeping; test the cell itself
+        a.setEnergy(200);                       // fund BEFORE the baseline, or the
+        const before = a.getState();            // funding reads as a collection
+        const spentBefore = before.spent;
+        arrivals[arrival](st0);
+        a.step(0.02);
+        const after = a.getState();
+        out.push({
+          arrival, kind: kind ?? 'empty',
+          /* Net of whatever the arrival itself cost. */
+          gained: (after.energy + (after.spent - spentBefore)) - before.energy,
+          lostLife: before.health - after.health,
+          cleared: a.cellAt(lane, lvl) === null,
+        });
+      }
+    }
+    return out;
+  });
+
+  const find = (arrival, kind) => matrix.find(r => r.arrival === arrival && r.kind === kind);
+  for (const arrival of ['jump', 'sidestep']) {
+    const e = find(arrival, 'energy'), c = find(arrival, 'cache'), h = find(arrival, 'hazard');
+    check(`arriving by ${arrival} collects energy`, e.gained >= 1 && e.cleared,
+      `gained ${e.gained}, cell cleared ${e.cleared}`);
+    check(`arriving by ${arrival} collects a cache`, c.gained >= 1 && c.cleared,
+      `gained ${c.gained}, cell cleared ${c.cleared}`);
+    check(`arriving by ${arrival} on spikes costs a life`, h.lostLife === 1,
+      `lost ${h.lostLife}`);
+  }
+}
+
+/*
+ * WHAT HE OWNS vs WHAT HE WEARS.
+ *
+ * Every upgrade was invisible. The shield had a bubble and the five split
+ * perks had nothing, and AIR SAVE was the worst case because it is the only
+ * one whose state changes mid-fall — the moment you need to know whether you
+ * still have it is the moment you are falling. These assert the marker exists,
+ * that it tracks the perk, and that spending AIR SAVE greys the cap.
+ */
+{
+  await fresh();
+  await run(() => { window.ascent.pause(true); window.ascent.mute(true); });
+
+  const bare = (await state()).worn;
+  check('an unequipped climber wears nothing',
+    bare.cap === null && !bare.magnet && !bare.spring && !bare.grip && bare.spare === 0,
+    JSON.stringify(bare));
+
+  const worn = await run(() => {
+    const a = window.ascent;
+    for (const [id, n] of [['airSave',1],['magnet',1],['spring',3],['grip',2],['spareShield',2]]) a.grant(id, n);
+    a.step(0.02);
+    return a.getState().worn;
+  });
+  check('every upgrade shows on the climber',
+    worn.cap === 'ready' && worn.magnet && worn.spring && worn.grip && worn.spare === 2,
+    JSON.stringify(worn));
+
+  /* The one that matters. Step off a gap, spend the air save, and the cap has
+   * to go grey while still in the air — not on the next landing. */
+  const air = await run(() => {
+    const a = window.ascent;
+    const s0 = a.getState();
+    for (const l of [0, 1, 2]) a.setCell(l, s0.floorInt + 1, 'gap');
+    a.jump();
+    for (let i = 0; i < 300 && a.getState().grounded; i++) a.step(0.02);
+    for (let i = 0; i < 300 && a.getState().airborne > 0; i++) a.step(0.02);
+    const falling = a.getState();               // off the ledge, no air save spent yet
+    a.jump();                                   // this is the air save
+    a.step(0.02);
+    const spent = a.getState();
+    return { readyWhileFalling: falling.worn.cap, afterSpending: spent.worn.cap, used: spent.usedAirSave };
+  });
+  check('the cap reads ready while falling and greys the moment it is spent',
+    air.readyWhileFalling === 'ready' && air.afterSpending === 'spent' && air.used,
+    JSON.stringify(air));
+
+  /*
+   * THE ALERT RING.
+   *
+   * "My focus is on the man and nearby levels, hard to read notice and warning
+   * at top." Warnings lived only on the hint line, which is outside where the
+   * player is looking — a turn telegraphed for 1.6 seconds is worth nothing if
+   * the telegraph is somewhere nobody looks. The ring renders hint()'s own
+   * ranking at the climber's feet, so these assert the two agree.
+   */
+  {
+    /* Self-contained: hint() holds a line for hintDwell (3.2s) before a calmer
+     * one may take the slot, so a two-frame step still reads the PREVIOUS
+     * warning. Every case here settles the line before asserting on it. */
+    await fresh();
+    await run(() => { window.ascent.pause(true); window.ascent.mute(true); window.ascent.setStorm(-400); });
+
+    const quiet = await run(() => {
+      const a = window.ascent, s0 = a.getState();
+      for (const l of [0, 1, 2]) a.setCell(l, s0.floorInt + 1, null);
+      a.step(0.05, 90);                              // past hintDwell
+      return { alert: a.getState().worn.alert, rank: a.getState().hintRank };
+    });
+    check('the ring stays dark when nothing is urgent', quiet.alert === null,
+      `alert ${quiet.alert} at rank ${quiet.rank}`);
+
+    const spikes = await run(() => {
+      const a = window.ascent, s0 = a.getState();
+      a.setCell(s0.lane, s0.floorInt + 1, 'hazard');
+      a.step(0.02, 2);
+      return { alert: a.getState().worn.alert, line: document.getElementById('routeHint').textContent };
+    });
+    check('spikes above light the ring at the climber, not only the line at the top',
+      spikes.alert === 'danger', `ring ${spikes.alert}, line "${spikes.line}"`);
+
+    /* The one that matters most: the world is about to move and the player has
+     * 1.6 seconds to pick a lane, spent looking at the climber. Turns are armed
+     * at a split, and the first split always turns, so this has to CLIMB to
+     * reach one rather than wait in place. */
+    await fresh();
+    const turning = await run(() => {
+      const a = window.ascent;
+      a.pause(true); a.mute(true); a.setStorm(-400);
+      for (let i = 0; i < 6000; i++) {
+        const s = a.getState();
+        if (!s.running) break;
+        if (s.flipPhase === 'warn') break;
+        if (s.grounded) a.jump();
+        a.step(0.02);
+      }
+      const s = a.getState();
+      return { phase: s.flipPhase, alert: s.worn.alert, floor: s.floorInt, running: s.running };
+    });
+    check('an incoming turn shows on the climber', turning.alert === 'turning',
+      `phase ${turning.phase}, ring ${turning.alert}, at level ${turning.floor}`);
+
+    /* And it must render hint()'s ladder rather than run its own. */
+    const agree = await run(() => ({
+      ring: window.ascent.getState().worn.alert,
+      line: document.getElementById('routeHint').className,
+    }));
+    check('the ring never disagrees with the hint line',
+      agree.ring === null || agree.line.includes(agree.ring), `${agree.ring} vs "${agree.line}"`);
+
+    await run(() => { window.ascent.setFlip(0.55, false); });
+  }
+
+  await fresh();
+  await run(() => {
+    const a = window.ascent; a.pause(true); a.mute(true);
+    for (const [id, n] of [['airSave',1],['magnet',1],['spring',3],['grip',2],['spareShield',2]]) a.grant(id, n);
+  });
+
+  /* A perk removed must remove its marker, or the climber lies about what he
+   * has — the same class of bug as a collected fragment left in the scene. */
+  const cleared = await run(() => {
+    const a = window.ascent;
+    for (const id of ['airSave','magnet','spring','grip','spareShield']) a.grant(id, 0);
+    a.step(0.02);
+    return a.getState().worn;
+  });
+  check('removing an upgrade removes what it wore',
+    cleared.cap === null && !cleared.magnet && !cleared.spring && !cleared.grip && cleared.spare === 0,
+    JSON.stringify(cleared));
+}
+
+/*
+ * THE CLIMBER MUST BE ON SCREEN.
+ *
+ * The camera is anchored to the storm — deliberately, since the line is the
+ * clock — but it had no clamp, and a climber gains on the line at roughly a
+ * level a second. A competent run spent about 80% of its frames with the
+ * climber above the top of the frame, and past a gap of ~16 he was not drawn
+ * at all. Nothing in the suite noticed, because every other test asks the
+ * simulation what happened rather than whether it could be seen.
+ */
+{
+  const framing = await run(`(() => {
+    ${BEST_LANE}
+    const a = window.ascent;
+    const rows = [];
+    for (const seed of [1, 7, 13, 21]) {
+      a.start(seed); a.pause(true); a.mute(true);
+      let t = 0, worstAbove = 0, worstBelow = 0, offFrames = 0, frames = 0, maxGap = 0;
+      while (a.getState().running && t < 600) {
+        const s = a.getState();
+        const want = bestLane(a, s) ?? s.lane;
+        if (want !== s.lane) a.moveLane(Math.sign(want - s.lane));
+        if (s.grounded) a.jump();
+        if (s.health <= 2 && s.energy >= s.cost.shield && !s.shield) a.buy('shield');
+        /* How far the climber sits from the middle of the frame, in the same
+         * units as the camera's visible half-height. */
+        const off = s.floor - s.cameraCentre;
+        worstAbove = Math.max(worstAbove, off);
+        worstBelow = Math.min(worstBelow, off);
+        if (Math.abs(off) > s.cameraHalfHeight) offFrames++;
+        maxGap = Math.max(maxGap, s.stormGap);
+        frames++;
+        a.step(0.05); t += 0.05;
+      }
+      rows.push({ seed, worstAbove: +worstAbove.toFixed(1), worstBelow: +worstBelow.toFixed(1),
+                  offPct: Math.round(100 * offFrames / frames), maxGap: +maxGap.toFixed(1),
+                  half: +a.getState().cameraHalfHeight.toFixed(1) });
+    }
+    return rows;
+  })()`);
+
+  const worstOff = Math.max(...framing.map(r => r.offPct));
+  const half = framing[0].half;
+  check('the climber is never outside the camera frame',
+    worstOff === 0,
+    framing.map(r => `seed ${r.seed}: ${r.offPct}% off, worst ${r.worstAbove}/${r.worstBelow} vs half-height ${r.half}, maxGap ${r.maxGap}`).join(' | '));
+
+  /* And with margin — level with the top edge is still unplayable, because the
+   * levels being jumped INTO are what has to be visible, not just the feet. */
+  const worstAbove = Math.max(...framing.map(r => r.worstAbove));
+  check('there is room above the climber to aim into',
+    worstAbove <= half - 3, `worst ${worstAbove.toFixed(1)} of a ${half} half-height`);
+
+  /* The storm-anchored framing must survive unchanged where the game is
+   * actually played, or the clamp has quietly redesigned the feel. */
+  const near = await run(() => {
+    const a = window.ascent, out = [];
+    a.start(1); a.pause(true); a.mute(true);
+    for (const gap of [0, 2, 4]) {
+      a.setStorm(a.getState().floor - gap);
+      const s = a.getState();
+      out.push({ gap, centre: +(s.cameraCentre - (s.floor - gap)).toFixed(2) });
+    }
+    return out;
+  });
+  check('close to the line the framing is unchanged — still storm-anchored',
+    near.every(r => Math.abs(r.centre - 6.4) < 0.001),
+    near.map(r => `gap ${r.gap}: centre storm+${r.centre}`).join(', '));
+}
+
+/*
+ * THE PERSON AT THE TOP.
+ *
+ * The summit was a number and a glowing ball that only existed once you had
+ * already won, which is a target rather than a reason. These assert the figure
+ * is on the tower from the first frame — a goal you cannot see until you have
+ * reached it is not a goal — and that they stay framing rather than growing a
+ * mechanic.
+ */
+{
+  await fresh();
+  const fig = await run(() => {
+    const a = window.ascent, s = a.getState();
+    return { figure: s.summitFigure, summit: s.summit, floor: s.floorInt };
+  });
+  check('someone is standing at the summit from the first frame',
+    fig.figure && fig.figure.visible && Math.abs(fig.figure.y - (fig.summit + 1)) < 0.001,
+    `${JSON.stringify(fig.figure)} at level ${fig.floor} of ${fig.summit}`);
+
+  /* A rescue that can fail separately from the climb is a second win
+   * condition and a second game. The only way to end a run stays the climb. */
+  const outcomes = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    const kinds = new Set();
+    for (const seed of [1, 7, 13, 21, 33, 41, 55, 68]) {
+      a.start(seed); a.pause(true); a.mute(true);
+      climbTo(a.getState().summit);
+      kinds.add(a.getState().over);
+    }
+    return [...kinds];
+  })()`);
+  /* Exactly two ways out, both of them the climb: 'fell' (spikes took the last
+   * life, or the line left you behind) and 'summit'. If a third ever appears
+   * here, something grew a second failure state. */
+  check('the figure adds no way to lose that the climb did not already have',
+    outcomes.every(k => ['summit', 'fell', null].includes(k)), outcomes.join(','));
+
+  /* And reaching them has to be the same event as reaching the top — not a
+   * separate thing to trigger. */
+  const won = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    for (const seed of [1, 7, 13, 21, 33, 41, 55, 68]) {
+      a.start(seed); a.pause(true); a.mute(true);
+      climbTo(a.getState().summit);
+      const r = a.getState();
+      if (r.over === 'summit') return { over: r.over, title: document.getElementById('modalTitle').textContent };
+    }
+    return null;
+  })()`);
+  check('the win names the person rather than the beacon',
+    won && /BANKED|REACHED/.test(won.title), won ? won.title : 'no summit in eight seeds');
+}
+
+/*
+ * The scene must agree with the grid. A collected fragment once stayed on
+ * screen because the cell was deleted and the mesh was not, and a mirroring
+ * turn moved the ledges while leaving the spikes behind — both invisible to a
+ * suite that only ever read state.
+ */
+{
+  const agree = await run(`(() => {
+    ${CLIMB_TO}
+    const a = window.ascent;
+    a.start(5); a.pause(true); a.mute(true);
+    climbTo(25);
+    const wrong = [];
+    for (let f = 1; f < 40; f++) {
+      for (let lane = 0; lane < 3; lane++) {
+        const x = a.cellScreenX(lane, f);
+        if (x === null) continue;
+        if (Math.abs(x - a.laneScreenX(lane)) > 0.001) wrong.push(lane + ':' + f);
+      }
+    }
+    return { wrong, ghosts: a.ghostPickups() };
+  })()`);
+  check('every drawn cell sits at its own lane', agree.wrong.length === 0, agree.wrong.slice(0, 6).join(', '));
+  check('no collected fragment is still in the scene', agree.ghosts === 0,
+    `${agree.ghosts} meshes with no cell behind them`);
 }
 
 check('no runtime errors', errors.length === 0, errors.join(' | '));

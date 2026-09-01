@@ -8,7 +8,8 @@
     "test:smoke": "node tests/smoke.mjs",
     "package": "node tools/package.mjs",
     "test:zip": "node tools/verify-zip.mjs",
-    "test:package": "node tools/package.mjs && node tools/verify-package.mjs && node tools/verify-zip.mjs"
+    "test:package": "node tools/package.mjs && node tools/verify-package.mjs && node tools/verify-zip.mjs",
+    "docx": "python3 tools/make-docx.py"
   },
   "devDependencies": {
     "playwright": "^1.58.0"
