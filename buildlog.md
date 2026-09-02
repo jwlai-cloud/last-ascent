@@ -90,7 +90,7 @@ ragdolls, no weather simulation, no meta-progression, no second environment.
 
 Portrait, single-player, zero external network requests, `index.html` at the
 top level of the zip containing all our own code unminified, libraries in
-`vendor/`, zip ≤ 35MB. Currently about 190KB.
+`vendor/`, zip ≤ 35MB. Currently 204KB.
 
 ---
 
@@ -490,9 +490,8 @@ half-built system Focus punishes. Reverted.
 requirement, not after. I built an economy to satisfy a floor the guidance says
 is already met, and only the measurement stopped it shipping.
 
-**Where things stand / next:** 7/7 packaging, 97/97 smoke, 9/9 zip. PR #3 is
-mergeable with ten commits. Next, and it has been next for several sessions:
-**five full playtest runs by a person**, then choose between this and
+**Where things stand / next:** 7/7 packaging, 97/97 smoke, 9/9 zip. PR #3
+merged. Next: **playtest by a person**, then choose between this and
 `../beanstalk`, since only one entry may be submitted.
 
 ## Session 18 — submission artifacts
@@ -507,6 +506,54 @@ template. The code was MIT but the bundled art carried separate licences, it
 shipped ragdoll physics which is out of scope, and decisively — *"the build log
 should show the AI did the heavy lifting"*. Starting from a finished game makes
 this document evidence against the entry.
+
+## Session 19 — the human played it, and the submission materials
+
+**Tool(s):** Claude Code (Anthropic), Claude Opus 5. No other AI tool was used
+on this project at any point.
+
+**What I built/changed:** no gameplay change. The human played the build — the
+gate that had been outstanding for several sessions — and reported no defects
+back. `The Last Ascent` was chosen over `../beanstalk` as the single entry.
+
+Produced the Devpost-facing material, none of which is a required artifact:
+a written story under Devpost's exact section headings, a core-loop diagram,
+seven gallery screenshots, a 3:2 thumbnail, and two videos — 45 seconds of
+uninterrupted play, and a 71-second captioned reel that demonstrates each
+mechanic in turn.
+
+**Key decisions, and why:** the repository was made **public** so the "Try it
+out" field could point at the code. That publishes `buildlog.md`, which the
+official guidance says is otherwise kept confidential by the organisers; the
+tradeoff was raised and the human took it deliberately.
+
+**Anything I pivoted on:** the first demo capture was a single competent run.
+It never died, never spent a shield, never showed a gap or the summit — it
+demonstrated that the game runs rather than what it is. Rebuilt as ten
+choreographed scenes, each restarting the run so lives are full.
+
+**Biggest problems, and how I solved them:**
+
+- Driving input from Node round-tripped per keypress, far slower than the 3.3
+  presses/second the game needs; the capture never got past level 4. Moving the
+  driver inside the page onto `requestAnimationFrame` reached level 83.
+- The caption bar sat directly over the storm-gap chip — the one number the ×4
+  scene exists to show. Only visible by looking at sampled frames.
+- `setFlip(1)` turned out to be **global and to survive `start()`**, so every
+  split turned the tower and the seed that summits stopped summitting; the
+  finale ended at 175 instead of 300 until it was reset to the shipping 0.55.
+- Two seeds ending at exactly level 111 looked like a structural wall. It was
+  not: 40 seeds give 31 distinct end levels, and the only repeated value with
+  weight is 300 — five summits. Checked rather than assumed.
+
+**What I learned:** a capture of a system is a measurement of it, and carries
+the same failure modes — it needs sampling and checking, not trust. Three of
+the four problems above were found by looking at frames, which is the same
+lesson this project keeps relearning about screenshots versus tests.
+
+**Where things stand / next:** submitted. 7/7 packaging, 97/97 smoke, 9/9 zip;
+204KB zip; repository public. Remaining time goes to playtesting and re-uploading,
+since Devpost accepts edits until the deadline.
 
 ---
 
