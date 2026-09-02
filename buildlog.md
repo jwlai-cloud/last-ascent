@@ -494,7 +494,20 @@ is already met, and only the measurement stopped it shipping.
 merged. Next: **playtest by a person**, then choose between this and
 `../beanstalk`, since only one entry may be submitted.
 
-## Session 18 — the human played it, and the submission materials
+## Session 18 — submission artifacts
+
+Packaging and zip verification were ported from `../beanstalk` where they were
+already proven. `npm run test:package` runs the guidance's own six-step
+procedure: rebuild, unzip clean, serve locally, private window, internet off,
+play a full session.
+
+**Considered and rejected:** building on an off-the-shelf Three.js action
+template. The code was MIT but the bundled art carried separate licences, it
+shipped ragdoll physics which is out of scope, and decisively — *"the build log
+should show the AI did the heavy lifting"*. Starting from a finished game makes
+this document evidence against the entry.
+
+## Session 19 — the human played it, and the submission materials
 
 **Tool(s):** Claude Code (Anthropic), Claude Opus 5. No other AI tool was used
 on this project at any point.
@@ -541,19 +554,6 @@ lesson this project keeps relearning about screenshots versus tests.
 **Where things stand / next:** submitted. 7/7 packaging, 97/97 smoke, 9/9 zip;
 204KB zip; repository public. Remaining time goes to playtesting and re-uploading,
 since Devpost accepts edits until the deadline.
-
-## Session 18 — submission artifacts
-
-Packaging and zip verification were ported from `../beanstalk` where they were
-already proven. `npm run test:package` runs the guidance's own six-step
-procedure: rebuild, unzip clean, serve locally, private window, internet off,
-play a full session.
-
-**Considered and rejected:** building on an off-the-shelf Three.js action
-template. The code was MIT but the bundled art carried separate licences, it
-shipped ragdoll physics which is out of scope, and decisively — *"the build log
-should show the AI did the heavy lifting"*. Starting from a finished game makes
-this document evidence against the entry.
 
 ---
 
