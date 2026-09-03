@@ -4,19 +4,19 @@ Design-Intent Document
 The Last Ascent. Survival & Resource Management.
 
 2. Target player and pitch
-For players who want a short, tense climb where every level is a decision rather than a reflex. Someone is stranded atop a collapsing tower and the storm below is rising faster than they can wait. A session runs a few minutes: gather energy, spend it to stay alive, and beat your own best.
+For players who want a short, tense climb where every level is a decision rather than a reflex. Someone is stranded atop a collapsing tower and the storm below is rising faster than they can wait. A session runs a few minutes: gather, spend to survive, beat your best.
 
 3. How to play (controls)
-Press SPACE or tap to leap exactly one level. Steer with A and D, or swipe. You can steer in mid-air, so the technique is to jump the moment you land and pick your lane on the way up. Press S, or the button, to convert 18 energy into a SHIELD that absorbs the next hit. The line above the tower always names the thing about to hurt you.
+Tap START CLIMBING on the opening card and you are playing. Press SPACE or tap to leap exactly one level. Steer with A and D, or swipe. You can steer in mid-air, so the technique is to jump the moment you land and pick your lane on the way up. Press S, or the button, to convert 18 energy into a SHIELD that absorbs the next hit.
 
 4. Core loop
 The primary action is one press, one level, choosing which of three lanes to land in. Ledges are safe, spikes cost a life and your footing, gaps drop you through. The goal is level 300 and the person waiting there; you lose when three lives are gone or the storm passes you, and reset is one tap. Feedback is constant: the storm gap counts down on screen, energy pays double within three levels of the line and quadruple within one and a half, a ring at the climber's feet turns red when the lane above will hurt him and violet when the tower is about to turn, and every thirtieth level banks your score. It repeats well because one swipe picks your route, your risk and your income together, and the greedy line always sits slightly too close to the storm.
 
 5. What is in this prototype
-Implemented and playable: jump-driven climbing across three lanes; an accelerating storm line; ledges, spikes, gaps and falls; energy with a proximity multiplier; supply caches; five stacking upgrades taken at lane splits and worn visibly on the climber; one spend; ten banking milestones; the tower turn; the summit and the person on it; persistent best score; reset; synthesised sound. Not yet in: a second tower, hazards beyond spikes and gaps, and music.
+Implemented and playable: jump-driven climbing across three lanes; an accelerating storm line; ledges, spikes, gaps and falls; energy with a proximity multiplier; supply caches; five stacking upgrades taken at lane splits, worn visibly; one spend; ten banking milestones; the tower turn; the summit and the person on it; persistent best score; reset; synthesised sound. Not yet in: a second tower, hazards beyond spikes and gaps, and music.
 
 6. Progression and signature twist
-In one sitting a judge sees the first lane split and a guaranteed tower turn by level three, hazard density rising to full by level eighty, the storm accelerating throughout, and a score-banking milestone every thirty levels. Most first runs end between levels sixty and one hundred fifty, and the milestone snapshots mean a partial run still scores. The signature mechanic is that energy is worth more the closer the storm is, so the thing chasing you is the thing paying you, and climbing hard outruns your own income.
+In one sitting a judge sees the first lane split and a guaranteed tower turn by level three, hazard density rising to full by level eighty, the storm accelerating throughout, and a score-banking milestone every thirty levels. Most first runs end between levels 60 and 150, and the milestone snapshots mean a partial run still scores. The signature mechanic is that energy is worth more the closer the storm is, so the thing chasing you is the thing paying you, and climbing hard outruns your own income.
 
 7. Future-state vision
-One tower, one climber, deeper reasons to stay low, so a run stays short and a best score stays worth chasing.
+Rebuilt on the creation tools it stays one tower, one climber and one resource, and grows the reasons to stay low: hazards that move where the safe lane is rather than adding more, and a daily seeded tower worth one short run every day.
